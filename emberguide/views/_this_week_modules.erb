@@ -23,6 +23,9 @@
         <% if data.dig("modules_errors", course_id) %>
           <span class="module-warning">Saved copy &middot; refresh unavailable</span>
         <% end %>
+        <% module_announcements(mod).each do |note| %>
+          <p class="module-note module-week-announcement"><%= h note["title"] %></p>
+        <% end %>
         <% if links.empty? %>
           <p class="module-empty">Nothing posted in this module yet.</p>
         <% else %>

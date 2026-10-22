@@ -75,7 +75,9 @@
                 <details class="module-items-toggle">
                   <summary>Show <%= h module_group_summary(Array(mod["items"]).reject { |item| item["type"] == "SubHeader" }) %></summary>
                   <% module_item_groups(mod["items"]).each do |group| %>
-                    <% if group["heading"] %>
+                    <% if group["note"] %>
+                      <p class="module-note" style="--module-indent: <%= [[group["note"]["indent"].to_i, 0].max, 5].min %>"><%= h group["note"]["title"] %></p>
+                    <% elsif group["heading"] %>
                       <% indent_offset = group["heading"]["indent"].to_i + 1 %>
                       <details class="module-group" style="--module-indent: <%= [[group["heading"]["indent"].to_i, 0].max, 5].min %>">
                         <summary>

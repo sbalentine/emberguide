@@ -71,6 +71,8 @@ details.module-item-details > summary:focus-visible { outline: 2px solid var(--p
 .module-group > summary strong { color: #c6c2df; font-size: 13px; }
 .module-group > summary span { font-size: 11px; }
 .module-group > .module-items { margin: 0 0 8px 18px; }
+.module-note { margin: 8px 0 8px calc(var(--module-indent, 0) * 14px); padding: 10px 14px; border: 1px solid var(--warning-border, rgba(255, 201, 107, 0.32)); border-radius: 10px; background: var(--warning-bg); color: var(--warning); font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.module-week-announcement { margin: 0; padding: 7px 10px; border-radius: 8px; font-size: 12px; }
 .module-card summary:focus-visible,
 .module-toggle-all:focus-visible { outline: 2px solid var(--purple); outline-offset: 4px; }
 .module-toolbar { display: flex; gap: 8px; margin: 0 0 8px; }

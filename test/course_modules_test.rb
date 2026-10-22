@@ -264,11 +264,40 @@ class CourseModulesTest < Minitest::Test
       { "id" => 6, "type" => "SubHeader", "title" => "Empty" }
     ]
     groups = module_item_groups(items)
-    assert_equal [nil, 2, 6], groups.map { |group| group["heading"]&.fetch("id") }
-    assert_equal [[1], [3, 4, 5], []], groups.map { |group| group["items"].map { |item| item["id"] } }
-    assert_equal [2, 6], module_item_groups(items.drop(1)).map { |group| group["heading"]["id"] }
+    assert_equal [nil, 2, nil], groups.map { |group| group["heading"]&.fetch("id") }
+    assert_equal 6, groups.last.dig("note", "id"), "a header with nothing under it is a note"
+    assert_equal [[1], [3, 4, 5]], groups.first(2).map { |group| group["items"].map { |item| item["id"] } }
+    assert_equal [2], module_item_groups(items.drop(1)).filter_map { |group| group.dig("heading", "id") }
     assert_equal "3 items · 1 of 2 assignments done", module_group_summary(groups[1]["items"])
     assert_equal "1 item", module_group_summary(groups[0]["items"])
+  end
+
+  def test_module_item_groups_treat_week_announcements_as_notes
+    item = ->(id, title, indent = 0, type = "Page") { { "id" => id, "title" => title, "indent" => indent, "type" => type } }
+    week = [
+      item.call(1, "‼️ Modified Days ‼️", 0, "SubHeader"),
+      item.call(2, "☀️ Picnic on Friday ☀️", 0, "SubHeader"),
+      item.call(3, "Monday"),
+      item.call(4, "Homework: Page 12", 3, "Assignment"),
+      item.call(5, "Tuesday"),
+      item.call(6, "Homework: Page 14", 3, "Assignment")
+    ]
+    groups = module_item_groups(week)
+    assert_equal [1, 2], groups.filter_map { |group| group.dig("note", "id") }
+    assert_equal [[3, 4, 5, 6]], groups.select { |group| group.key?("items") }.map { |group| group["items"].map { |i| i["id"] } }
+    assert groups.none? { |group| group["heading"] }
+
+    days = [
+      item.call(1, "Monday", 0, "SubHeader"),
+      item.call(2, "Slides", 0, "ExternalUrl"),
+      item.call(3, "Handout", 1, "ExternalUrl"),
+      item.call(4, "Tuesday", 0, "SubHeader"),
+      item.call(5, "Lab", 1, "Assignment"),
+      item.call(6, "Loose page")
+    ]
+    groups = module_item_groups(days)
+    assert_equal [[1, [2, 3]], [4, [5]]], groups.select { |group| group["heading"] }.map { |group| [group["heading"]["id"], group["items"].map { |i| i["id"] }] }
+    assert_equal [6], groups.last["items"].map { |i| i["id"] }, "an indented run under a header ends at the header's level"
   end
 
   def test_module_item_score_shows_points_for_graded_work
@@ -355,6 +384,18 @@ class CourseModulesTest < Minitest::Test
     links, kind = this_week_links("items" => mod["items"].first(2))
     assert_equal [[1], :pages], [links.map { |item| item["id"] }, kind]
     assert_equal [[], :pages], this_week_links("items" => [])
+  end
+
+  def test_module_announcements_returns_header_notes
+    mod = { "items" => [
+      { "id" => 1, "type" => "SubHeader", "title" => "‼️ Test on Friday ‼️" },
+      { "id" => 2, "type" => "Page", "title" => "Monday" },
+      { "id" => 3, "type" => "Page", "title" => "Tuesday" },
+      { "id" => 4, "type" => "SubHeader", "title" => "Lab", "indent" => 0 },
+      { "id" => 5, "type" => "Assignment", "title" => "Lab sheet", "indent" => 1 }
+    ] }
+    assert_equal [1], module_announcements(mod).map { |item| item["id"] }
+    assert_empty module_announcements(nil)
   end
 
   def test_module_html_content_keeps_text_and_safe_links_only

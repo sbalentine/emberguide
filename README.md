@@ -108,6 +108,9 @@ Open **Modules** to browse the weekly instructions, readings, links, and work
 inside each Canvas class. Items retain the teacher's ordering and link back to
 Canvas. Due dates and completion requirements appear where Canvas supplies them;
 a completed requirement does not necessarily mean an assignment was submitted.
+Text headers that act as announcements, such as "‼️ Unit 2 Test on Friday ‼️"
+above a week of day pages, show as highlighted notes instead of folders, both on
+the Modules page and on the This Week in Class cards.
 
 The dashboard and Modules page show **This Week in Class**: each class's first
 module, skipping any module whose name contains "Resources", since teachers list
@@ -254,7 +257,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.4.0"
+version: "1.4.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

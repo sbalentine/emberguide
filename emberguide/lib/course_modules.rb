@@ -414,16 +414,43 @@ end
 
 # Splits module items into an untitled lead-in and one group per Canvas
 # text header, so each header can collapse the items listed beneath it.
+# Teachers use text headers two ways: as section titles ("Monday") over the
+# items that follow, and as announcements ("‼️ Unit 2 Test on Friday ‼️") at
+# the top of a week laid out as day pages. A header becomes a note instead of
+# a group when nothing follows it before the next header, or when what
+# follows includes two or more day pages. A header over deeper-indented items
+# only takes that indented run.
+MODULE_DAY_TITLE = /\A\s*(mon|tues|wednes|thurs|fri)day\b/i
+
 def module_item_groups(items)
-  groups = [{ "heading" => nil, "items" => [] }]
-  Array(items).each do |item|
-    if item["type"] == "SubHeader"
-      groups << { "heading" => item, "items" => [] }
-    else
+  items = Array(items)
+  groups = []
+  index = 0
+  while index < items.length
+    item = items[index]
+    unless item["type"] == "SubHeader"
+      groups << { "heading" => nil, "items" => [] } unless groups.last && groups.last.key?("items") && groups.last["heading"].nil?
       groups.last["items"] << item
+      index += 1
+      next
+    end
+
+    level = item["indent"].to_i
+    stop = (index + 1...items.length).find { |i| items[i]["type"] == "SubHeader" } || items.length
+    section = items[(index + 1)...stop]
+    if section.first && section.first["indent"].to_i > level
+      run = section.take_while { |child| child["indent"].to_i > level }
+      groups << { "heading" => item, "items" => run }
+      index += 1 + run.length
+    elsif section.empty? || section.count { |child| child["title"].to_s.match?(MODULE_DAY_TITLE) } >= 2
+      groups << { "note" => item }
+      index += 1
+    else
+      groups << { "heading" => item, "items" => section }
+      index = stop
     end
   end
-  groups.reject { |group| group["heading"].nil? && group["items"].empty? }
+  groups
 end
 
 def module_group_summary(items)
@@ -449,6 +476,10 @@ def this_week_links(mod)
   items = Array(mod&.fetch("items", nil)).reject { |item| item["type"] == "SubHeader" }
   work = items.select { |item| WEEKLY_WORK_TYPES.include?(item["type"]) }
   work.any? ? [work, :work] : [items, :pages]
+end
+
+def module_announcements(mod)
+  module_item_groups(Array(mod&.fetch("items", nil))).filter_map { |group| group["note"] }
 end
 
 # Unfinished module work due tomorrow, shaped like Canvas planner events so
