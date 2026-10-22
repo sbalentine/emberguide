@@ -299,16 +299,41 @@ server.mount_proc "/api/ai/status" do |request, response|
 end
 
 server.mount_proc "/settings/spark" do |request, response|
-  unless request.request_method == "GET" && request.path == "/settings/spark"
-    response.status = request.path == "/settings/spark" ? 405 : 404
-    response["Allow"] = "GET" if response.status == 405
+  unless request.path == "/settings/spark"
+    response.status = 404
     response.body = "Not found"
+    next
+  end
+  unless %w[GET POST].include?(request.request_method)
+    response.status = 405
+    response["Allow"] = "GET, POST"
+    response.body = "Method not allowed"
     next
   end
 
   spark_settings = ai_settings
+  spark_error = nil
+  model_listing = spark_settings["url"] ? ai_list_models(spark_settings) : {}
+  spark_models = Array(model_listing["models"])
+
+  if request.request_method == "POST"
+    begin
+      raise ArgumentError, "Set up the Spark server first." unless spark_settings["url"]
+      raise ArgumentError, "Spark is offline, so the model list can't be checked. Turn on the PC and try again." if model_listing["models"].nil?
+
+      save_spark_model(request.query["model"], spark_models.map { |model| model["id"] })
+      response.status = 303
+      response["Location"] = "/settings/spark?saved=1"
+      response.body = ""
+      next
+    rescue ArgumentError => e
+      spark_error = e.message
+      response.status = 422
+    end
+  end
+
+  spark_default_model = ai_default_model_id(spark_models)
   spark_config_source = File.exist?("/data/options.json") ? "addon" : "env"
-  response.status = 200
   response["Content-Type"] = "text/html; charset=utf-8"
   response["Cache-Control"] = "no-cache"
   response.body = ERB.new(File.read(File.join(APP_ROOT, "views", "spark_settings.erb"))).result(binding)

@@ -15,7 +15,9 @@ class FakeLlamaServer
         next
       end
       res["Content-Type"] = "application/json"
-      res.body = JSON.generate("data" => models.map { |id| { "id" => id } })
+      res.body = JSON.generate("data" => models.map do |model|
+        model.is_a?(Hash) ? { "id" => model[:id], "status" => { "value" => model[:state], "args" => ["C:\\private\\llama.exe"] } } : { "id" => model }
+      end)
     end
     @server.mount_proc("/v1/chat/completions") do |req, res|
       body = JSON.parse(req.body)
@@ -52,13 +54,17 @@ end
 
 class AiAssistantTest < Minitest::Test
   def setup
-    @saved_env = ENV.to_h.slice("LLM_URL", "LLM_API_KEY", "LLM_MODEL")
-    %w[LLM_URL LLM_API_KEY LLM_MODEL].each { |name| ENV.delete(name) }
+    @saved_env = ENV.to_h.slice("LLM_URL", "LLM_API_KEY")
+    %w[LLM_URL LLM_API_KEY].each { |name| ENV.delete(name) }
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
+    $ai_default_model = nil
   end
 
   def teardown
-    %w[LLM_URL LLM_API_KEY LLM_MODEL].each { |name| ENV.delete(name) }
+    %w[LLM_URL LLM_API_KEY].each { |name| ENV.delete(name) }
     ENV.update(@saved_env)
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
+    $ai_default_model = nil
     @fake&.stop
   end
 
@@ -129,7 +135,6 @@ class AiAssistantTest < Minitest::Test
     @fake = FakeLlamaServer.new
     ENV["LLM_URL"] = @fake.url
     ENV["LLM_API_KEY"] = "secret-key"
-    ENV["LLM_MODEL"] = "qwen3-14b"
 
     answer = ai_ask(sample_data, [{ "role" => "user", "content" => "What's due tomorrow?" }])
 
@@ -229,16 +234,48 @@ class AiAssistantTest < Minitest::Test
     @fake = FakeLlamaServer.new(api_key: "right-key", models: ["gemma-4"])
     ENV["LLM_URL"] = @fake.url
     ENV["LLM_API_KEY"] = "wrong-key"
-    ENV["LLM_MODEL"] = "gemma-4"
+    save_spark_model("gemma-4", ["gemma-4"])
     assert ai_status["online"]
     refute ai_status.key?("key_accepted"), "routine polling skips the model check"
     assert_equal false, ai_status(check_server: true)["key_accepted"]
 
     ENV["LLM_API_KEY"] = "right-key"
     status = ai_status(check_server: true)
-    assert_equal [true, ["gemma-4"], true], status.values_at("key_accepted", "models", "model_available")
+    assert_equal [true, ["gemma-4"], "gemma-4", true], status.values_at("key_accepted", "models", "model", "model_available")
 
-    ENV["LLM_MODEL"] = "qwen3-14b"
-    assert_equal false, ai_status(check_server: true)["model_available"]
+    save_spark_model("", [])
+    status = ai_status(check_server: true)
+    assert_equal ["gemma-4", true], status.values_at("model", "automatic")
+    refute status.key?("model_available")
+
+    File.write(SPARK_SETTINGS_FILE, JSON.generate("model" => "qwen3-14b"))
+    assert_equal false, ai_status(check_server: true)["model_available"], "a model removed from the server is flagged"
+  end
+
+  def test_model_choice_is_saved_only_from_installed_models_and_automatic_prefers_running_ones
+    @fake = FakeLlamaServer.new(models: [
+      { id: "gemma-3", state: "unloaded" },
+      { id: "gemma-3-small", state: "sleeping" },
+      { id: "gemma-4", state: "loaded" }
+    ])
+    ENV["LLM_URL"] = @fake.url
+
+    listing = ai_list_models
+    assert_equal [{ "id" => "gemma-3", "state" => "unloaded" }, { "id" => "gemma-3-small", "state" => "sleeping" }, { "id" => "gemma-4", "state" => "loaded" }], listing["models"]
+    refute_includes JSON.generate(listing), "private", "local paths from the server aren't kept"
+    assert_equal "gemma-4", ai_default_model_id(listing["models"])
+    assert_equal "gemma-3-small", ai_default_model_id(listing["models"].first(2))
+    assert_equal "gemma-3", ai_default_model_id(listing["models"].first(1))
+    assert_nil ai_default_model_id([])
+
+    ai_ask(sample_data, [{ "role" => "user", "content" => "Hi" }])
+    assert_equal "gemma-4", @fake.requests.last["body"]["model"], "automatic uses the running model"
+
+    assert_raises(ArgumentError) { save_spark_model("evil-model", %w[gemma-3 gemma-4]) }
+    assert_equal "", ai_settings["model"]
+    save_spark_model(" gemma-3 ", %w[gemma-3 gemma-4])
+    assert_equal "gemma-3", ai_settings["model"]
+    ai_ask(sample_data, [{ "role" => "user", "content" => "Hi" }])
+    assert_equal "gemma-3", @fake.requests.last["body"]["model"]
   end
 end

@@ -173,12 +173,17 @@ private networks in the PC's firewall. Spark's online/offline badge rechecks eve
 after every answer. If the PC is off, Spark shows as offline and the rest of
 EmberGuide is unaffected.
 
-**Settings → Spark** shows the configured server, model, and whether an API key
-is set (never the key itself). **Test Connection** confirms the server is
-reachable, the key is accepted, and the configured model is available. The
-connection is changed only in the add-on options or `.env`, not in the web UI,
-because EmberGuide pages have no login and anyone on the network could
-otherwise redirect class data to another server.
+**Settings → Spark** shows the configured server and whether an API key is set
+(never the key itself), and lists the models installed on the server so you can
+pick one. **Automatic** (the default) uses whichever model is already running on
+the PC; a model that isn't running makes the next answer wait while it loads.
+The choice is saved in EmberGuide's data folder. **Test Connection** confirms
+the server is reachable, the key is accepted, and the chosen model is still
+installed. The server address and key are changed only in the add-on options or
+`.env`, not in the web UI, because EmberGuide pages have no login and anyone on
+the network could otherwise redirect class data to another server. Picking a
+model is allowed on the page because it only chooses between models already on
+that server.
 
 ### 📈 Encouraging grade context
 
@@ -302,7 +307,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.5.0"
+version: "1.5.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -327,7 +332,6 @@ options:
   gmail_app_password: ""
   llm_url: ""
   llm_api_key: ""
-  llm_model: ""
 
 schema:
   canvas_url: str
@@ -337,10 +341,9 @@ schema:
   gmail_app_password: password
   llm_url: str?
   llm_api_key: password?
-  llm_model: str?
 ```
 
-Configure the Canvas URL, token, and expiration date through the Home Assistant add-on configuration. The Gmail sender and app password are optional and only required for scheduled emails. `llm_url` (for example `http://192.168.1.50:8080`), `llm_api_key`, and `llm_model` are optional and turn on **Spark**.
+Configure the Canvas URL, token, and expiration date through the Home Assistant add-on configuration. The Gmail sender and app password are optional and only required for scheduled emails. `llm_url` (for example `http://192.168.1.50:8080`) and `llm_api_key` are optional and turn on **Spark**; pick the model on **Settings → Spark**.
 
 The token is provided to the application through Home Assistant's `/data/options.json` and does **not** need to be stored in the Git repository.
 
@@ -514,8 +517,7 @@ Expected options:
   "gmail_sender": "sender@gmail.com",
   "gmail_app_password": "...",
   "llm_url": "http://192.168.1.50:8080",
-  "llm_api_key": "...",
-  "llm_model": "qwen3-14b"
+  "llm_api_key": "..."
 }
 ```
 
@@ -531,7 +533,6 @@ GMAIL_SENDER
 GMAIL_APP_PASSWORD
 LLM_URL          # optional, enables Spark
 LLM_API_KEY      # optional, matches llama-server --api-key
-LLM_MODEL        # optional, model name sent to the server
 ```
 
 `run-local.sh` loads these values from `.env`.

@@ -20,16 +20,23 @@
       <span class="ask-status" data-ask-status>Checking Spark&hellip;</span>
     </header>
 
+    <% if request.query["saved"] == "1" %>
+      <div class="backup-message success" role="status">
+        <strong>Spark model saved.</strong>
+      </div>
+    <% elsif spark_error %>
+      <div class="backup-message error" role="alert">
+        <strong>Spark model not saved.</strong>
+        <%= h spark_error %>
+      </div>
+    <% end %>
+
     <section class="card calendar-settings-card">
       <h2>Connection</h2>
       <dl class="spark-settings-list">
         <div>
           <dt>Server</dt>
           <dd><%= spark_settings["url"] ? "<code>#{h spark_settings["url"]}</code>" : "Not set" %></dd>
-        </div>
-        <div>
-          <dt>Model</dt>
-          <dd><%= spark_settings["model"].empty? ? "Server default" : "<code>#{h spark_settings["model"]}</code>" %></dd>
         </div>
         <div>
           <dt>API key</dt>
@@ -45,14 +52,54 @@
       <% end %>
     </section>
 
+    <% if spark_settings["url"] %>
+      <section class="card calendar-settings-card">
+        <h2>Model</h2>
+        <% if spark_models.any? %>
+          <% state_labels = { "loaded" => "ready", "sleeping" => "asleep" } %>
+          <form method="post" action="/settings/spark">
+            <label>
+              <span>Model Spark uses</span>
+              <select name="model" data-spark-model>
+                <option value=""<%= " selected" if spark_settings["model"].empty? %>>Automatic (<%= h spark_default_model %>)</option>
+                <% spark_models.each do |model| %>
+                  <option value="<%= h model["id"] %>"<%= " selected" if model["id"] == spark_settings["model"] %>><%= h model["id"] %><%= " · #{state_labels[model["state"]]}" if state_labels[model["state"]] %></option>
+                <% end %>
+                <% unless spark_settings["model"].empty? || spark_models.any? { |model| model["id"] == spark_settings["model"] } %>
+                  <option value="<%= h spark_settings["model"] %>" selected disabled><%= h spark_settings["model"] %> · not installed</option>
+                <% end %>
+              </select>
+              <small>
+                Automatic uses the model that's already running on the PC.
+                Picking one that isn't running makes the next answer wait while
+                the PC loads it.
+              </small>
+            </label>
+            <div class="settings-actions">
+              <a href="/settings">Cancel</a>
+              <button type="submit">Save Model</button>
+            </div>
+          </form>
+        <% elsif model_listing["key_accepted"] == false %>
+          <p class="settings-intro">The server rejected the API key, so its models can't be listed. Check the key, then reload this page.</p>
+        <% else %>
+          <p class="settings-intro">
+            Spark is offline, so the installed models can't be listed.
+            Turn on the PC, make sure llama-server is running, then reload this page.
+            Currently using: <strong><%= spark_settings["model"].empty? ? "Automatic" : h(spark_settings["model"]) %></strong>.
+          </p>
+        <% end %>
+      </section>
+    <% end %>
+
     <section class="card calendar-settings-card">
-      <h2>Changing these settings</h2>
+      <h2>Changing the connection</h2>
       <% if spark_config_source == "addon" %>
-        <p class="settings-intro">Set <code>llm_url</code>, <code>llm_api_key</code>, and <code>llm_model</code> in the Home Assistant add-on Configuration tab, then restart the add-on.</p>
+        <p class="settings-intro">Set <code>llm_url</code> and <code>llm_api_key</code> in the Home Assistant add-on Configuration tab, then restart the add-on.</p>
       <% else %>
-        <p class="settings-intro">Set <code>LLM_URL</code>, <code>LLM_API_KEY</code>, and <code>LLM_MODEL</code> in <code>.env</code>, then restart EmberGuide.</p>
+        <p class="settings-intro">Set <code>LLM_URL</code> and <code>LLM_API_KEY</code> in <code>.env</code>, then restart EmberGuide.</p>
       <% end %>
-      <p class="settings-intro">These can't be edited here because EmberGuide pages have no login. Keeping them with the Canvas token means nobody on the network can redirect class data to another server.</p>
+      <p class="settings-intro">The server and key can't be edited here because EmberGuide pages have no login. Keeping them with the Canvas token means nobody on the network can redirect class data to another server. The model can be picked here because it only chooses between models already on that server.</p>
     </section>
   </main>
   <script src="/ask.js?v=<%= File.mtime(File.join(APP_ROOT, "public", "ask.js")).to_i %>" defer></script>

@@ -1,6 +1,6 @@
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.5.0"
+version: "1.5.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -21,7 +21,6 @@ options:
   gmail_app_password: ""
   llm_url: ""
   llm_api_key: ""
-  llm_model: ""
 schema:
   canvas_url: str
   canvas_token: password
@@ -30,4 +29,3 @@ schema:
   gmail_app_password: password
   llm_url: str?
   llm_api_key: password?
-  llm_model: str?

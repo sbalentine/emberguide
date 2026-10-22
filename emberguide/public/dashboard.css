@@ -2499,7 +2499,8 @@ button.calendar-month-day[aria-expanded="true"] {
   font-weight: 700;
 }
 
-.calendar-settings-card input {
+.calendar-settings-card input,
+.calendar-settings-card select {
   width: 100%;
   min-height: 42px;
   padding: 9px 11px;
@@ -3552,6 +3553,7 @@ button.calendar-month-day[aria-expanded="true"] {
 .todo-edit select,
 .todo-edit textarea,
 .calendar-settings-card input,
+.calendar-settings-card select,
 .calendar-settings-card textarea,
 .assignment-grade-row input,
 .custom-grade-row input,
@@ -3575,6 +3577,7 @@ button.calendar-month-day[aria-expanded="true"] {
 .todo-edit select:focus,
 .todo-edit textarea:focus,
 .calendar-settings-card input:focus,
+.calendar-settings-card select:focus,
 .calendar-settings-card textarea:focus,
 .assignment-grade-row input:focus,
 .custom-grade-row input:focus,

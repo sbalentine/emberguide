@@ -57,9 +57,10 @@
       } else if (result.key_accepted === false) {
         checkResult.textContent = "The server is up, but it rejected the API key.";
       } else if (result.model_available === false) {
-        checkResult.textContent = `The server is up, but it doesn't list the configured model. Available: ${(result.models || []).join(", ") || "none"}.`;
+        checkResult.textContent = `The server is up, but the chosen model isn't installed anymore. Pick another model below.`;
       } else {
-        checkResult.textContent = `Connected at ${time}. Spark is ready.`;
+        const model = result.model ? ` Using ${result.model}${result.automatic ? " (automatic)" : ""}.` : "";
+        checkResult.textContent = `Connected at ${time}. Spark is ready.${model}`;
       }
     } catch (error) {
       checkResult.textContent = `Status check failed (${error.message}).`;

@@ -166,9 +166,11 @@ class AppRoutesTest < Minitest::Test
     refute_includes spark.body, "data-spark-test"
     assert_equal({ "enabled" => false, "online" => false }, JSON.parse(request("/api/ai/status").body))
 
-    fake = FakeLlamaServer.new(answer: "Study Lesson 1-3 Blookets.")
+    fake = FakeLlamaServer.new(answer: "Study Lesson 1-3 Blookets.", models: [{ id: "qwen3-14b", state: "loaded" }, { id: "gemma-4", state: "unloaded" }])
     ENV["LLM_URL"] = fake.url
     ENV["LLM_API_KEY"] = "never-shown-key"
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
+    $ai_default_model = nil
     assert_includes request("/").body, %(href="/ask">\n        Spark)
     assert_includes request("/settings").body, 'href="/settings/spark"'
     spark = request("/settings/spark")
@@ -176,14 +178,29 @@ class AppRoutesTest < Minitest::Test
     assert_includes spark.body, "Set (hidden)"
     assert_includes spark.body, "data-spark-test"
     refute_includes spark.body, "never-shown-key"
-    assert_equal "405", request("/settings/spark", Net::HTTP::Post, "llm_url" => "http://evil").code
+    refute_includes spark.body, "private", "server-side paths aren't shown"
+    assert_includes spark.body, %(<option value="" selected>Automatic (qwen3-14b)</option>)
+    assert_includes spark.body.dup.force_encoding(Encoding::UTF_8), %(<option value="qwen3-14b">qwen3-14b · ready</option>)
+    assert_includes spark.body, %(<option value="gemma-4">gemma-4</option>)
+    refute_includes spark.body, "llm_model"
+    saved = request("/settings/spark", Net::HTTP::Post, "model" => "gemma-4", "llm_url" => "http://evil")
+    assert_equal ["303", "/settings/spark?saved=1"], [saved.code, URI(saved["Location"]).request_uri]
+    assert_equal ["gemma-4", fake.url], ai_settings.values_at("model", "url")
+    assert_includes request("/settings/spark?saved=1").body, %(<option value="gemma-4" selected>gemma-4</option>)
+    rejected = request("/settings/spark", Net::HTTP::Post, "model" => "evil-model")
+    assert_equal "422", rejected.code
+    assert_includes rejected.body, "isn&#39;t installed"
+    assert_equal "gemma-4", ai_settings["model"]
+    assert_equal "405", request("/settings/spark", Net::HTTP::Delete).code
+    assert_equal "303", request("/settings/spark", Net::HTTP::Post, "model" => "").code
+    assert_equal "", ai_settings["model"]
     page = request("/ask")
     assert_includes page.body, "What Spark can see"
     assert_includes page.body, "data-ask-form"
     status = JSON.parse(request("/api/ai/status").body)
     assert_equal [true, true], status.values_at("enabled", "online")
     refute status.key?("key_accepted")
-    assert_equal ["qwen3-14b"], JSON.parse(request("/api/ai/status?check=1").body)["models"]
+    assert_equal [%w[qwen3-14b gemma-4], "qwen3-14b", true], JSON.parse(request("/api/ai/status?check=1").body).values_at("models", "model", "automatic")
     assert_equal "405", request("/ai/ask").code
     assert_equal "415", request("/ai/ask", Net::HTTP::Post, "messages" => "hi").code
 
@@ -205,6 +222,10 @@ class AppRoutesTest < Minitest::Test
 
     fake.stop
     fake = nil
+    offline = request("/settings/spark", Net::HTTP::Post, "model" => "gemma-4")
+    assert_equal "422", offline.code
+    assert_includes offline.body, "Spark is offline"
+    assert_equal "", ai_settings["model"]
     _response, events = post_stream([{ "role" => "user", "content" => "Hi" }])
     assert_equal ["error"], events.map { |event| event["type"] }
     assert_match(/offline/, events.first["error"])
@@ -214,6 +235,8 @@ class AppRoutesTest < Minitest::Test
   ensure
     fake&.stop
     %w[LLM_URL LLM_API_KEY].each { |name| ENV.delete(name) }
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
+    $ai_default_model = nil
   end
 
   def post_json(path, payload, headers = {})

@@ -1,4 +1,5 @@
 require "date"
+require "fileutils"
 require "net/http"
 require "json"
 require "uri"
@@ -16,20 +17,57 @@ AI_RECENT_GRADES = 12
 AI_NAME = "Spark"
 AI_OPEN_TIMEOUT = 3
 AI_READ_TIMEOUT = 120
+AI_DEFAULT_MODEL_SECONDS = 300
+# Router-mode llama-server reports each model as loaded, sleeping, or unloaded;
+# Automatic prefers a model that can answer without loading first.
+AI_MODEL_STATE_ORDER = %w[loaded sleeping].freeze
+
+SPARK_SETTINGS_FILE = ENV.fetch("SPARK_SETTINGS_FILE") do
+  if File.directory?("/data")
+    "/data/spark_settings.json"
+  else
+    File.expand_path("../tmp/spark_settings.json", __dir__)
+  end
+end
+
+$ai_default_model = nil
 
 class AiUnavailable < StandardError; end
 # Raised when the browser disconnects mid-stream; kept apart from network
 # errors so it isn't reported as the server being offline.
 class AiClientGone < StandardError; end
 
+# The server address and key live in add-on options or .env; the model is
+# picked on Settings → Spark from what the server has installed.
 def ai_settings
   settings = options
   url = (settings["llm_url"] || ENV["LLM_URL"]).to_s.strip
   {
     "url" => url.empty? ? nil : url.sub(%r{/+\z}, "").sub(%r{/v1\z}, ""),
     "api_key" => (settings["llm_api_key"] || ENV["LLM_API_KEY"]).to_s.strip,
-    "model" => (settings["llm_model"] || ENV["LLM_MODEL"]).to_s.strip
+    "model" => load_spark_settings["model"].to_s.strip
   }
+end
+
+def load_spark_settings
+  saved = JSON.parse(File.read(SPARK_SETTINGS_FILE))
+  saved.is_a?(Hash) ? saved : {}
+rescue Errno::ENOENT, JSON::ParserError
+  {}
+end
+
+# Saves the chosen model, or "" for Automatic. Only models the server lists
+# can be chosen, so the page can't be used to send arbitrary values.
+def save_spark_model(model, available_ids)
+  model = model.to_s.strip
+  raise ArgumentError, "That model isn't installed on the Spark server." unless model.empty? || available_ids.include?(model)
+
+  FileUtils.mkdir_p(File.dirname(SPARK_SETTINGS_FILE))
+  temporary_file = "#{SPARK_SETTINGS_FILE}.tmp"
+  File.write(temporary_file, JSON.pretty_generate("model" => model))
+  File.rename(temporary_file, SPARK_SETTINGS_FILE)
+  $ai_default_model = nil
+  model
 end
 
 def ai_enabled?
@@ -68,18 +106,59 @@ def ai_status(check_server: false)
   status
 end
 
-# Confirms the API key is accepted and the configured model is available.
-def ai_server_check(settings = ai_settings)
+# Lists installed models as [{"id", "state"}], or returns
+# {"key_accepted" => false} / {} when the key is rejected or the server can't
+# be read. Only ids and states are kept; router mode also reports local paths.
+def ai_list_models(settings = ai_settings)
   response = ai_http(URI("#{settings["url"]}/v1/models"), Net::HTTP::Get.new("/v1/models"), read_timeout: 5)
   return { "key_accepted" => false } if [401, 403].include?(response.code.to_i)
   return {} unless response.is_a?(Net::HTTPSuccess)
 
-  models = Array(JSON.parse(response.body)["data"]).filter_map { |model| model["id"] if model.is_a?(Hash) }
-  result = { "key_accepted" => true, "models" => models }
-  result["model_available"] = models.include?(settings["model"]) unless settings["model"].empty?
-  result
+  models = Array(JSON.parse(response.body)["data"]).filter_map do |model|
+    next unless model.is_a?(Hash) && model["id"].is_a?(String)
+
+    state = model["status"].is_a?(Hash) ? model.dig("status", "value").to_s : ""
+    { "id" => model["id"], "state" => state }
+  end
+  { "key_accepted" => true, "models" => models }
 rescue AiUnavailable, JSON::ParserError, URI::InvalidURIError
   {}
+end
+
+def ai_default_model_id(models)
+  models.min_by.with_index do |model, index|
+    [AI_MODEL_STATE_ORDER.index(model["state"]) || AI_MODEL_STATE_ORDER.length, index]
+  end&.fetch("id")
+end
+
+# The chosen model, or for Automatic the server's best current choice,
+# remembered briefly so each question doesn't list models first.
+def ai_model_for_request(settings)
+  return settings["model"] unless settings["model"].empty?
+
+  cached_url, cached_model, cached_at = $ai_default_model
+  return cached_model if cached_url == settings["url"] && cached_at && Time.now - cached_at < AI_DEFAULT_MODEL_SECONDS
+
+  model = ai_default_model_id(Array(ai_list_models(settings)["models"]))
+  $ai_default_model = [settings["url"], model, Time.now] if model
+  model || "local"
+end
+
+# Confirms the API key is accepted and the chosen model is installed.
+def ai_server_check(settings = ai_settings)
+  listing = ai_list_models(settings)
+  return listing unless listing["models"]
+
+  ids = listing["models"].map { |model| model["id"] }
+  result = { "key_accepted" => true, "models" => ids }
+  if settings["model"].empty?
+    result["model"] = ai_default_model_id(listing["models"])
+    result["automatic"] = true
+  else
+    result["model"] = settings["model"]
+    result["model_available"] = ids.include?(settings["model"])
+  end
+  result
 end
 
 def ai_system_prompt(data, context)
@@ -114,7 +193,7 @@ def ai_chat_request(settings, data, messages, stream:)
   uri = URI("#{settings["url"]}/v1/chat/completions")
   request = Net::HTTP::Post.new(uri.request_uri, "Content-Type" => "application/json")
   body = {
-    "model" => settings["model"].empty? ? "local" : settings["model"],
+    "model" => ai_model_for_request(settings),
     "messages" => [{ "role" => "system", "content" => ai_system_prompt(data, ai_class_context(data)) }] +
       ai_clean_messages(messages),
     "temperature" => 0.3,
