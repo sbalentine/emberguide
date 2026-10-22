@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080711">
+  <link rel="stylesheet" href="/dashboard.css?v=<%= File.mtime(File.join(APP_ROOT, "public", "dashboard.css")).to_i %>">
+  <title>Spark Settings</title>
+</head>
+<body>
+  <main class="container settings-page spark-settings-page">
+    <% navigation_active = "settings" %>
+    <%= render_partial("navigation", binding) %>
+
+    <header class="settings-header">
+      <div>
+        <h1>Spark</h1>
+        <div class="subtitle">The optional homework helper that runs on a llama.cpp server on your network.</div>
+      </div>
+      <span class="ask-status" data-ask-status>Checking Spark&hellip;</span>
+    </header>
+
+    <section class="card calendar-settings-card">
+      <h2>Connection</h2>
+      <dl class="spark-settings-list">
+        <div>
+          <dt>Server</dt>
+          <dd><%= spark_settings["url"] ? "<code>#{h spark_settings["url"]}</code>" : "Not set" %></dd>
+        </div>
+        <div>
+          <dt>Model</dt>
+          <dd><%= spark_settings["model"].empty? ? "Server default" : "<code>#{h spark_settings["model"]}</code>" %></dd>
+        </div>
+        <div>
+          <dt>API key</dt>
+          <dd><%= spark_settings["api_key"].empty? ? "Not set" : "Set (hidden)" %></dd>
+        </div>
+      </dl>
+
+      <% if spark_settings["url"] %>
+        <div class="settings-actions spark-test-actions">
+          <p class="spark-check" data-spark-check aria-live="polite"></p>
+          <button type="button" data-spark-test>Test Connection</button>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="card calendar-settings-card">
+      <h2>Changing these settings</h2>
+      <% if spark_config_source == "addon" %>
+        <p class="settings-intro">Set <code>llm_url</code>, <code>llm_api_key</code>, and <code>llm_model</code> in the Home Assistant add-on Configuration tab, then restart the add-on.</p>
+      <% else %>
+        <p class="settings-intro">Set <code>LLM_URL</code>, <code>LLM_API_KEY</code>, and <code>LLM_MODEL</code> in <code>.env</code>, then restart EmberGuide.</p>
+      <% end %>
+      <p class="settings-intro">These can't be edited here because EmberGuide pages have no login. Keeping them with the Canvas token means nobody on the network can redirect class data to another server.</p>
+    </section>
+  </main>
+  <script src="/ask.js?v=<%= File.mtime(File.join(APP_ROOT, "public", "ask.js")).to_i %>" defer></script>
+</body>
+</html>

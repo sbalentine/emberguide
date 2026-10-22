@@ -61,6 +61,11 @@
     <a class="<%= "is-active" if navigation_active == "modules" %>" href="/modules">
       Modules
     </a>
+    <% if ai_enabled? %>
+      <a class="<%= "is-active" if navigation_active == "ask" %>" href="/ask">
+        Spark
+      </a>
+    <% end %>
     <a class="<%= "is-active" if navigation_active == "achievements" %>" href="/achievements">
       Achievements
     </a>

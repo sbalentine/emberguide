@@ -34,6 +34,7 @@ require_relative "lib/dashboard_data"
 require_relative "lib/course_modules"
 require_relative "lib/email_backups"
 require_relative "lib/school_calendar"
+require_relative "lib/ai_assistant"
 
 # ============================================================
 # Startup
@@ -195,6 +196,127 @@ rescue StandardError => e
   response.status = 502
   response["Content-Type"] = "text/plain; charset=utf-8"
   response.body = "Canvas didn't return this item."
+end
+
+# ============================================================
+# Spark (optional llama.cpp homework helper)
+# ============================================================
+
+server.mount_proc "/ask" do |request, response|
+  unless request.request_method == "GET" && request.path == "/ask"
+    response.status = request.path == "/ask" ? 405 : 404
+    response["Allow"] = "GET" if response.status == 405
+    response.body = "Ask supports GET /ask only."
+    next
+  end
+
+  data = dashboard_data_with_manual
+  ai_context = data ? ai_class_context(data) : nil
+  response.status = 200
+  response["Content-Type"] = "text/html; charset=utf-8"
+  response["Cache-Control"] = "no-cache"
+  response.body = ERB.new(File.read(File.join(APP_ROOT, "views", "ask.erb"))).result(binding)
+rescue StandardError => e
+  puts "Ask page error: #{e.class}: #{e.message}"
+  response.status = 500
+  response["Content-Type"] = "text/plain; charset=utf-8"
+  response.body = "Unable to load Spark."
+end
+
+server.mount_proc "/ai/ask" do |request, response|
+  response["Content-Type"] = "application/json; charset=utf-8"
+  response["Cache-Control"] = "no-store"
+  unless request.request_method == "POST"
+    response.status = 405
+    response["Allow"] = "POST"
+    response.body = JSON.generate("error" => "Method not allowed")
+    next
+  end
+  # A JSON body can't be sent cross-site without a CORS preflight, which this
+  # server never approves, so other web pages can't spend Spark's time.
+  unless request.content_type.to_s.start_with?("application/json")
+    response.status = 415
+    response.body = JSON.generate("error" => "Send questions as JSON.")
+    next
+  end
+
+  begin
+    payload = JSON.parse(request.body.to_s)
+    messages = payload.is_a?(Hash) ? payload["messages"] : nil
+    data = dashboard_data_with_manual || {}
+
+    if request["Accept"].to_s.include?("application/x-ndjson")
+      ai_clean_messages(messages)
+      response.status = 200
+      response["Content-Type"] = "application/x-ndjson; charset=utf-8"
+      response["X-Accel-Buffering"] = "no"
+      response.chunked = true
+      response.body = proc do |out|
+        send_event = lambda do |event|
+          # WEBrick's ChunkedWrapper#<< passes an Array to #write, so call #write directly.
+          out.write("#{JSON.generate(event)}\n")
+        rescue SystemCallError, IOError => e
+          raise AiClientGone, e.message
+        end
+        begin
+          answer = ai_ask_stream(data, messages) { |event| send_event.call(event) }
+          send_event.call("type" => "done", "answer" => answer)
+        rescue AiClientGone
+          nil
+        rescue AiUnavailable => e
+          send_event.call("type" => "error", "error" => e.message)
+        rescue StandardError => e
+          puts "Spark error: #{e.class}: #{e.message}"
+          send_event.call("type" => "error", "error" => "Something went wrong asking Spark.")
+        end
+      rescue AiClientGone
+        nil
+      end
+      next
+    end
+
+    answer = ai_ask(data, messages)
+    response.status = 200
+    response.body = JSON.generate("answer" => answer)
+  rescue JSON::ParserError, ArgumentError => e
+    response.status = 422
+    response.body = JSON.generate("error" => e.is_a?(ArgumentError) ? e.message : "That question couldn't be read.")
+  rescue AiUnavailable => e
+    response.status = 503
+    response.body = JSON.generate("error" => e.message)
+  rescue StandardError => e
+    puts "Spark error: #{e.class}: #{e.message}"
+    response.status = 500
+    response.body = JSON.generate("error" => "Something went wrong asking Spark.")
+  end
+end
+
+server.mount_proc "/api/ai/status" do |request, response|
+  response.status = 200
+  response["Content-Type"] = "application/json; charset=utf-8"
+  response["Cache-Control"] = "no-store"
+  response.body = JSON.generate(ai_status(check_server: request.query["check"] == "1"))
+end
+
+server.mount_proc "/settings/spark" do |request, response|
+  unless request.request_method == "GET" && request.path == "/settings/spark"
+    response.status = request.path == "/settings/spark" ? 405 : 404
+    response["Allow"] = "GET" if response.status == 405
+    response.body = "Not found"
+    next
+  end
+
+  spark_settings = ai_settings
+  spark_config_source = File.exist?("/data/options.json") ? "addon" : "env"
+  response.status = 200
+  response["Content-Type"] = "text/html; charset=utf-8"
+  response["Cache-Control"] = "no-cache"
+  response.body = ERB.new(File.read(File.join(APP_ROOT, "views", "spark_settings.erb"))).result(binding)
+rescue StandardError => e
+  puts "Spark settings error: #{e.class}: #{e.message}"
+  response.status = 500
+  response["Content-Type"] = "text/plain; charset=utf-8"
+  response.body = "Unable to load Spark settings."
 end
 
 server.mount_proc "/refresh" do |request, response|
@@ -1290,6 +1412,13 @@ server.mount_proc "/modules.js" do |_request, response|
   response["Content-Type"] = "text/javascript; charset=utf-8"
   response["Cache-Control"] = "no-cache"
   response.body = File.read(File.join(APP_ROOT, "public", "modules.js"))
+end
+
+server.mount_proc "/ask.js" do |_request, response|
+  response.status = 200
+  response["Content-Type"] = "text/javascript; charset=utf-8"
+  response["Cache-Control"] = "no-cache"
+  response.body = File.read(File.join(APP_ROOT, "public", "ask.js"))
 end
 
 server.mount_proc "/navigation.js" do |_request, response|

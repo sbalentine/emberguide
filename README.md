@@ -135,6 +135,51 @@ Modules refresh with the existing Canvas refresh and are included in the cached
 data. If a class's module refresh fails, the view reports the failure and shows
 its saved copy when available.
 
+### 💬 Spark, the homework helper (optional, local AI)
+
+Connect a [llama.cpp](https://github.com/ggml-org/llama.cpp) server on your home
+network, such as a gaming PC, and **Spark** appears in the menu for questions like
+"What should I focus on tonight?" or "What should I study for the Unit 2 test?". Answers
+come only from data EmberGuide has already saved: current grades, missing and
+upcoming work, each class's This Week in Class module with its announcements
+and saved instructions, and recent scores. Nothing is fetched from Canvas at
+question time, and the Canvas token is never sent. **What Spark can see**
+on the Spark page shows exactly what goes to the model (about 5–6k tokens for a
+typical week).
+
+Tests, quizzes, and benchmarks come first. Teachers often announce tests in
+module headers and daily notes ("‼️ Unit 2 Test on Friday ‼️") rather than as
+Canvas assignments, so Spark collects those mentions into a **Tests and
+quizzes coming up** list. The list states which date each weekday falls on
+("Friday = tomorrow"), puts tests today or tomorrow at the top, and skips
+earlier days this week. Spark is told to lead with these when asked what to
+focus on or study.
+
+While Spark works, the answer bubble shows a progress bar with a time estimate
+while it reads the class notes ("Reading your class notes… 65% · about 3s
+left"), then the answer streams in as it's written. A follow-up question reuses
+what the model already read, so it skips most of that step.
+
+On an RTX 4070 (12 GB), Qwen3 14B Q4_K_M is a good fit:
+
+```text
+llama-server -m Qwen3-14B-Q4_K_M.gguf --host 0.0.0.0 --port 8080 -c 12288 \
+  -ngl 99 -fa -ctk q8_0 -ctv q8_0 --jinja --api-key <secret>
+```
+
+Use Qwen3 8B Q5_K_M if the GPU also needs room for games. Allow the port only on
+private networks in the PC's firewall. Spark's online/offline badge rechecks every
+30 seconds while the page is open, whenever the tab comes back into view, and
+after every answer. If the PC is off, Spark shows as offline and the rest of
+EmberGuide is unaffected.
+
+**Settings → Spark** shows the configured server, model, and whether an API key
+is set (never the key itself). **Test Connection** confirms the server is
+reachable, the key is accepted, and the configured model is available. The
+connection is changed only in the add-on options or `.env`, not in the web UI,
+because EmberGuide pages have no login and anyone on the network could
+otherwise redirect class data to another server.
+
 ### 📈 Encouraging grade context
 
 A compact snapshot shows every current course average, while locally rendered
@@ -257,7 +302,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.4.1"
+version: "1.5.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -280,6 +325,9 @@ options:
   token_expires: ""
   gmail_sender: ""
   gmail_app_password: ""
+  llm_url: ""
+  llm_api_key: ""
+  llm_model: ""
 
 schema:
   canvas_url: str
@@ -287,9 +335,12 @@ schema:
   token_expires: str
   gmail_sender: str
   gmail_app_password: password
+  llm_url: str?
+  llm_api_key: password?
+  llm_model: str?
 ```
 
-Configure the Canvas URL, token, and expiration date through the Home Assistant add-on configuration. The Gmail sender and app password are optional and only required for scheduled emails.
+Configure the Canvas URL, token, and expiration date through the Home Assistant add-on configuration. The Gmail sender and app password are optional and only required for scheduled emails. `llm_url` (for example `http://192.168.1.50:8080`), `llm_api_key`, and `llm_model` are optional and turn on **Spark**.
 
 The token is provided to the application through Home Assistant's `/data/options.json` and does **not** need to be stored in the Git repository.
 
@@ -461,7 +512,10 @@ Expected options:
   "canvas_token": "...",
   "token_expires": "YYYY-MM-DD",
   "gmail_sender": "sender@gmail.com",
-  "gmail_app_password": "..."
+  "gmail_app_password": "...",
+  "llm_url": "http://192.168.1.50:8080",
+  "llm_api_key": "...",
+  "llm_model": "qwen3-14b"
 }
 ```
 
@@ -475,6 +529,9 @@ CANVAS_TOKEN
 TOKEN_EXPIRES
 GMAIL_SENDER
 GMAIL_APP_PASSWORD
+LLM_URL          # optional, enables Spark
+LLM_API_KEY      # optional, matches llama-server --api-key
+LLM_MODEL        # optional, model name sent to the server
 ```
 
 `run-local.sh` loads these values from `.env`.
@@ -536,6 +593,10 @@ Do not:
 * Publish `/data/options.json`
 * Publish your local `.env`
 * Include the Canvas token or Gmail app password in a backup archive
+
+Spark sends saved class data (names, assignments, grades, and module
+instructions) to the configured `llm_url`. Point it only at a server you control
+on your own network, and set an `--api-key` on llama-server.
 
 The repository's `.gitignore` excludes common secret and runtime files, but always review changes before pushing:
 

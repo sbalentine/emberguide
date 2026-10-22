@@ -3750,3 +3750,66 @@ button.calendar-month-day[aria-expanded="true"] {
     color: var(--text);
   }
 }
+
+/* Ask EmberGuide */
+.ask-page .card { padding: 20px; }
+.ask-status { align-self: center; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.ask-status[data-state="on"] { border-color: var(--success-border); background: var(--success-bg); color: var(--success); }
+.ask-status[data-state="off"] { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); }
+.ask-setup h2 { margin: 0 0 8px; font-size: 18px; }
+.ask-setup p { margin: 0; color: var(--muted); line-height: 1.6; }
+.ask-setup code { color: var(--text); }
+.ask-log { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; min-height: 120px; overflow-y: auto; padding-bottom: 4px; }
+.ask-empty { margin: 0; color: var(--muted); }
+.ask-message { max-width: 85%; padding: 10px 14px; border-radius: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ask-message-user { align-self: flex-end; background: var(--purple); color: #fff; border-bottom-right-radius: 4px; }
+.ask-message-assistant { align-self: flex-start; border: 1px solid var(--border); background: var(--card-raised); color: var(--text); border-bottom-left-radius: 4px; }
+.ask-message.is-pending { color: var(--muted); font-style: italic; }
+/* A fixed width while Spark works stops the bubble resizing as the progress
+   label ticks and as answer text streams in. */
+.ask-message-assistant.is-pending,
+.ask-message-assistant.is-streaming { width: 85%; }
+.ask-message.is-error { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); }
+.ask-message.ask-markdown { white-space: normal; }
+.ask-progress-label { display: block; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.ask-progress-bar { position: relative; display: block; width: min(260px, 60vw); height: 6px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.ask-progress-bar > span { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--purple); transition: width 0.3s ease; }
+.ask-progress-bar.is-indeterminate > span { width: 35%; animation: ask-progress-slide 1.4s ease-in-out infinite; }
+@keyframes ask-progress-slide { from { left: -35%; } to { left: 100%; } }
+.ask-message.is-streaming > :last-child::after { content: "▍"; margin-left: 2px; color: var(--purple); animation: ask-caret 1s steps(2) infinite; }
+@keyframes ask-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ask-progress-bar.is-indeterminate > span,
+  .ask-message.is-streaming > :last-child::after { animation: none; }
+}
+.ask-markdown > :first-child { margin-top: 0; }
+.ask-markdown > :last-child { margin-bottom: 0; }
+.ask-markdown p { margin: 0 0 10px; }
+.ask-markdown .ask-heading { margin-top: 14px; font-weight: 800; }
+.ask-markdown ul,
+.ask-markdown ol { margin: 0 0 10px; padding-left: 22px; }
+.ask-markdown li { margin: 3px 0; }
+.ask-markdown li.is-nested { margin-left: 18px; }
+.ask-markdown strong { color: var(--text); font-weight: 750; }
+.ask-markdown code { padding: 1px 5px; border-radius: 5px; background: var(--border); font-size: 0.92em; }
+.ask-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 12px; }
+.ask-suggestion, .ask-clear { padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.ask-suggestion:hover, .ask-clear:hover { border-color: var(--purple); }
+.ask-form textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--text); font: inherit; resize: vertical; }
+.ask-form textarea:focus-visible, .ask-suggestion:focus-visible, .ask-clear:focus-visible, .ask-send:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.ask-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.ask-send { padding: 9px 20px; border: 0; border-radius: 10px; background: var(--purple); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.ask-send:disabled { opacity: 0.6; cursor: wait; }
+.ask-footnote { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+.ask-context { margin-top: 16px; }
+.ask-context summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.ask-context pre { max-height: 50vh; margin: 12px 0 0; overflow: auto; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+
+/* Spark settings */
+.spark-settings-page .settings-header { display: flex; justify-content: space-between; gap: 16px; }
+.spark-settings-list { display: grid; gap: 12px; margin: 16px 0 0; }
+.spark-settings-list div { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: baseline; }
+.spark-settings-list dt { color: var(--muted); font-size: 13px; }
+.spark-settings-list dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.spark-test-actions { align-items: center; }
+.spark-check { flex: 1; margin: 0; color: var(--muted); font-size: 14px; }

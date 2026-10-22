@@ -1,6 +1,7 @@
 require "net/http"
 require "timeout"
 require_relative "test_helper"
+require_relative "ai_assistant_test"
 
 DASHBOARD_TEST_SERVER_THREAD = Thread.new do
   DASHBOARD_SERVER.start
@@ -151,6 +152,80 @@ class AppRoutesTest < Minitest::Test
     $last_successful_update = Time.parse("2026-09-27T12:00:00Z")
     $last_refresh_error = nil
     $event_journal = { "next_id" => 1, "events" => [] }
+  end
+
+  def test_ask_page_and_endpoint_use_the_configured_llama_server
+    ENV.delete("LLM_URL")
+    refute_includes request("/").body, 'href="/ask"'
+    page = request("/ask")
+    assert_equal "200", page.code
+    assert_includes page.body, "Set up Spark"
+    spark = request("/settings/spark")
+    assert_equal "200", spark.code
+    assert_includes spark.body, "LLM_URL"
+    refute_includes spark.body, "data-spark-test"
+    assert_equal({ "enabled" => false, "online" => false }, JSON.parse(request("/api/ai/status").body))
+
+    fake = FakeLlamaServer.new(answer: "Study Lesson 1-3 Blookets.")
+    ENV["LLM_URL"] = fake.url
+    ENV["LLM_API_KEY"] = "never-shown-key"
+    assert_includes request("/").body, %(href="/ask">\n        Spark)
+    assert_includes request("/settings").body, 'href="/settings/spark"'
+    spark = request("/settings/spark")
+    assert_includes spark.body, fake.url
+    assert_includes spark.body, "Set (hidden)"
+    assert_includes spark.body, "data-spark-test"
+    refute_includes spark.body, "never-shown-key"
+    assert_equal "405", request("/settings/spark", Net::HTTP::Post, "llm_url" => "http://evil").code
+    page = request("/ask")
+    assert_includes page.body, "What Spark can see"
+    assert_includes page.body, "data-ask-form"
+    status = JSON.parse(request("/api/ai/status").body)
+    assert_equal [true, true], status.values_at("enabled", "online")
+    refute status.key?("key_accepted")
+    assert_equal ["qwen3-14b"], JSON.parse(request("/api/ai/status?check=1").body)["models"]
+    assert_equal "405", request("/ai/ask").code
+    assert_equal "415", request("/ai/ask", Net::HTTP::Post, "messages" => "hi").code
+
+    response = post_json("/ai/ask", "messages" => [{ "role" => "user", "content" => "What should I study?" }])
+    assert_equal "200", response.code
+    assert_equal "Study Lesson 1-3 Blookets.", JSON.parse(response.body)["answer"]
+    assert_equal "What should I study?", fake.requests.last["body"]["messages"].last["content"]
+    assert_equal "422", post_json("/ai/ask", "messages" => []).code
+    assert_equal "422", post_json("/ai/ask", "not json").code
+
+    response, events = post_stream([{ "role" => "user", "content" => "What should I focus on tonight?" }])
+    assert_equal "200", response.code
+    assert_equal "application/x-ndjson; charset=utf-8", response["Content-Type"]
+    assert_equal %w[progress token done], events.map { |event| event["type"] }.uniq
+    assert_equal 100, events.find { |event| event["type"] == "progress" }["total"]
+    assert_equal "Study Lesson 1-3 Blookets.", events.last["answer"]
+    assert_equal "Study Lesson 1-3 Blookets.", events.select { |event| event["type"] == "token" }.map { |event| event["text"] }.join.strip
+    assert_equal "422", post_json("/ai/ask", { "messages" => [] }, "Accept" => "application/x-ndjson").code
+
+    fake.stop
+    fake = nil
+    _response, events = post_stream([{ "role" => "user", "content" => "Hi" }])
+    assert_equal ["error"], events.map { |event| event["type"] }
+    assert_match(/offline/, events.first["error"])
+    response = post_json("/ai/ask", "messages" => [{ "role" => "user", "content" => "Hi" }])
+    assert_equal "503", response.code
+    assert_match(/offline/, JSON.parse(response.body)["error"])
+  ensure
+    fake&.stop
+    %w[LLM_URL LLM_API_KEY].each { |name| ENV.delete(name) }
+  end
+
+  def post_json(path, payload, headers = {})
+    uri = URI("http://127.0.0.1:#{DASHBOARD_TEST_PORT}#{path}")
+    Net::HTTP.start(uri.hostname, uri.port) do |http|
+      http.post(uri.path, payload.is_a?(String) ? payload : JSON.generate(payload), { "Content-Type" => "application/json" }.merge(headers))
+    end
+  end
+
+  def post_stream(messages)
+    response = post_json("/ai/ask", { "messages" => messages }, "Accept" => "application/x-ndjson")
+    [response, response.body.to_s.lines.map { |line| JSON.parse(line) }]
   end
 
   def request(path, request_class = Net::HTTP::Get, fields = nil)
