@@ -33,6 +33,7 @@ end
 $ai_default_model = nil
 
 class AiUnavailable < StandardError; end
+class AiContextTooSmall < AiUnavailable; end
 # Raised when the browser disconnects mid-stream; kept apart from network
 # errors so it isn't reported as the server being offline.
 class AiClientGone < StandardError; end
@@ -106,9 +107,10 @@ def ai_status(check_server: false)
   status
 end
 
-# Lists installed models as [{"id", "state"}], or returns
+# Lists installed models as [{"id", "state", "context"}], or returns
 # {"key_accepted" => false} / {} when the key is rejected or the server can't
-# be read. Only ids and states are kept; router mode also reports local paths.
+# be read. Only these fields are kept; router mode also reports local paths.
+# "context" is the context size the model was last loaded with, when known.
 def ai_list_models(settings = ai_settings)
   response = ai_http(URI("#{settings["url"]}/v1/models"), Net::HTTP::Get.new("/v1/models"), read_timeout: 5)
   return { "key_accepted" => false } if [401, 403].include?(response.code.to_i)
@@ -118,17 +120,50 @@ def ai_list_models(settings = ai_settings)
     next unless model.is_a?(Hash) && model["id"].is_a?(String)
 
     state = model["status"].is_a?(Hash) ? model.dig("status", "value").to_s : ""
-    { "id" => model["id"], "state" => state }
+    context = model["meta"].is_a?(Hash) ? model.dig("meta", "n_ctx") : nil
+    { "id" => model["id"], "state" => state }.tap { |entry| entry["context"] = context if context.is_a?(Integer) }
   end
   { "key_accepted" => true, "models" => models }
 rescue AiUnavailable, JSON::ParserError, URI::InvalidURIError
   {}
 end
 
+# Running models first, then sleeping ones; among those, the one with the most
+# room for class notes.
 def ai_default_model_id(models)
   models.min_by.with_index do |model, index|
-    [AI_MODEL_STATE_ORDER.index(model["state"]) || AI_MODEL_STATE_ORDER.length, index]
+    [AI_MODEL_STATE_ORDER.index(model["state"]) || AI_MODEL_STATE_ORDER.length, -model["context"].to_i, index]
   end&.fetch("id")
+end
+
+# Runs the block with the model to use. In Automatic mode, a model whose
+# context is too small for the class notes is swapped for another installed
+# model once.
+def ai_with_model(settings)
+  model = ai_model_for_request(settings)
+  yield model
+rescue AiContextTooSmall
+  raise unless settings["model"].empty?
+
+  fallback = ai_default_model_id(Array(ai_list_models(settings)["models"]).reject { |entry| entry["id"] == model })
+  raise unless fallback
+
+  $ai_default_model = [settings["url"], fallback, Time.now]
+  yield fallback
+end
+
+# Turns a failed llama-server response into a message for the page.
+def ai_response_error(response, body, model)
+  error = JSON.parse(body.to_s)["error"]
+  error = {} unless error.is_a?(Hash)
+  if error["type"] == "exceed_context_size_error"
+    raise AiContextTooSmall, "#{model} on the PC only has room for #{error["n_ctx"]} tokens, but #{AI_NAME}'s class notes need about " \
+                             "#{error["n_prompt_tokens"]}. Pick a different model on Settings → #{AI_NAME}, or load this one with a larger --ctx-size."
+  end
+  detail = ai_trim(error["message"].to_s, 200)
+  raise AiUnavailable, "#{AI_NAME} returned an error (HTTP #{response.code})#{": #{detail}" unless detail.empty?}."
+rescue JSON::ParserError
+  raise AiUnavailable, "#{AI_NAME} returned an error (HTTP #{response.code})."
 end
 
 # The chosen model, or for Automatic the server's best current choice,
@@ -189,11 +224,11 @@ def ai_clean_messages(messages)
   cleaned
 end
 
-def ai_chat_request(settings, data, messages, stream:)
+def ai_chat_request(settings, model, data, messages, stream:)
   uri = URI("#{settings["url"]}/v1/chat/completions")
   request = Net::HTTP::Post.new(uri.request_uri, "Content-Type" => "application/json")
   body = {
-    "model" => ai_model_for_request(settings),
+    "model" => model,
     "messages" => [{ "role" => "system", "content" => ai_system_prompt(data, ai_class_context(data)) }] +
       ai_clean_messages(messages),
     "temperature" => 0.3,
@@ -217,9 +252,10 @@ def ai_ask(data, messages)
   settings = ai_settings
   raise AiUnavailable, "#{AI_NAME} isn't set up." unless settings["url"]
 
-  response = ai_http(*ai_chat_request(settings, data, messages, stream: false))
-  unless response.is_a?(Net::HTTPSuccess)
-    raise AiUnavailable, "#{AI_NAME} returned an error (HTTP #{response.code})."
+  response = ai_with_model(settings) do |model|
+    ai_http(*ai_chat_request(settings, model, data, messages, stream: false)).tap do |reply|
+      ai_response_error(reply, reply.body, model) unless reply.is_a?(Net::HTTPSuccess)
+    end
   end
 
   answer = ai_strip_thinking(JSON.parse(response.body).dig("choices", 0, "message", "content").to_s)
@@ -239,14 +275,24 @@ def ai_ask_stream(data, messages)
   settings = ai_settings
   raise AiUnavailable, "#{AI_NAME} isn't set up." unless settings["url"]
 
-  uri, request = ai_chat_request(settings, data, messages, stream: true)
   raw = +""
+  # Errors arrive before any streamed text, so a retry never repeats output.
+  ai_with_model(settings) do |model|
+    ai_stream_answer(*ai_chat_request(settings, model, data, messages, stream: true), model, raw) { |event| yield event }
+  end
+  answer = ai_strip_thinking(raw)
+  raise AiUnavailable, "#{AI_NAME} sent back an empty answer." if answer.empty?
+
+  answer
+rescue JSON::ParserError
+  raise AiUnavailable, "#{AI_NAME} sent back something EmberGuide couldn't read."
+end
+
+# Reads one streamed llama-server reply into raw, yielding events.
+def ai_stream_answer(uri, request, model, raw)
   sent = 0
   ai_http(uri, request) do |response|
-    unless response.is_a?(Net::HTTPSuccess)
-      response.read_body
-      raise AiUnavailable, "#{AI_NAME} returned an error (HTTP #{response.code})."
-    end
+    ai_response_error(response, response.read_body, model) unless response.is_a?(Net::HTTPSuccess)
 
     buffer = +""
     response.read_body do |chunk|
@@ -277,13 +323,6 @@ def ai_ask_stream(data, messages)
       end
     end
   end
-
-  answer = ai_strip_thinking(raw)
-  raise AiUnavailable, "#{AI_NAME} sent back an empty answer." if answer.empty?
-
-  answer
-rescue JSON::ParserError
-  raise AiUnavailable, "#{AI_NAME} sent back something EmberGuide couldn't read."
 end
 
 # ============================================================

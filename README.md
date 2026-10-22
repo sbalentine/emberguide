@@ -177,6 +177,11 @@ EmberGuide is unaffected.
 (never the key itself), and lists the models installed on the server so you can
 pick one. **Automatic** (the default) uses whichever model is already running on
 the PC; a model that isn't running makes the next answer wait while it loads.
+Automatic prefers the running model with the largest context window, and if a
+model's context is too small for the class notes (llama-server's
+`exceed_context_size_error`), it retries once with another installed model. A
+model you picked yourself isn't swapped; Spark says how many tokens it needs so
+you can pick another or load it with a larger `--ctx-size`.
 The choice is saved in EmberGuide's data folder. **Test Connection** confirms
 the server is reachable, the key is accepted, and the chosen model is still
 installed. The server address and key are changed only in the add-on options or
@@ -307,7 +312,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.5.1"
+version: "1.5.2"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

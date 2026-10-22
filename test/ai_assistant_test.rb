@@ -5,7 +5,7 @@ require_relative "test_helper"
 class FakeLlamaServer
   attr_reader :requests, :url
 
-  def initialize(answer: "You have nothing due tomorrow.", status: 200, api_key: nil, models: ["qwen3-14b"])
+  def initialize(answer: "You have nothing due tomorrow.", status: 200, api_key: nil, models: ["qwen3-14b"], too_small: [])
     @requests = []
     @server = WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1", AccessLog: [], Logger: WEBrick::Log.new(File::NULL))
     @server.mount_proc("/health") { |_req, res| res.body = '{"status":"ok"}' }
@@ -16,14 +16,23 @@ class FakeLlamaServer
       end
       res["Content-Type"] = "application/json"
       res.body = JSON.generate("data" => models.map do |model|
-        model.is_a?(Hash) ? { "id" => model[:id], "status" => { "value" => model[:state], "args" => ["C:\\private\\llama.exe"] } } : { "id" => model }
+        next { "id" => model } unless model.is_a?(Hash)
+
+        entry = { "id" => model[:id], "status" => { "value" => model[:state], "args" => ["C:\\private\\llama.exe"] } }
+        entry["meta"] = { "n_ctx" => model[:context] } if model[:context]
+        entry
       end)
     end
     @server.mount_proc("/v1/chat/completions") do |req, res|
       body = JSON.parse(req.body)
       @requests << { "authorization" => req["Authorization"], "body" => body }
       res.status = status
-      if body["stream"] && status == 200
+      if too_small.include?(body["model"])
+        res.status = 400
+        res["Content-Type"] = "application/json"
+        res.body = JSON.generate("error" => { "code" => 400, "type" => "exceed_context_size_error", "n_prompt_tokens" => 5900, "n_ctx" => 4096,
+                                              "message" => "request (5900 tokens) exceeds the available context size (4096 tokens)" })
+      elsif body["stream"] && status == 200
         res["Content-Type"] = "text/event-stream"
         res.chunked = true
         res.body = proc do |out|
@@ -277,5 +286,30 @@ class AiAssistantTest < Minitest::Test
     assert_equal "gemma-3", ai_settings["model"]
     ai_ask(sample_data, [{ "role" => "user", "content" => "Hi" }])
     assert_equal "gemma-3", @fake.requests.last["body"]["model"]
+  end
+
+  def test_automatic_moves_past_a_model_too_small_for_the_class_notes
+    @fake = FakeLlamaServer.new(answer: "Study for the Unit 2 Test.", too_small: ["gemma-3"], models: [
+      { id: "gemma-3", state: "loaded", context: 4096 },
+      { id: "gemma-4", state: "sleeping", context: 93_696 }
+    ])
+    ENV["LLM_URL"] = @fake.url
+    assert_equal({ "id" => "gemma-3", "state" => "loaded", "context" => 4096 }, ai_list_models["models"].first)
+    assert_equal "gemma-4", ai_default_model_id([{ "id" => "small", "state" => "loaded", "context" => 4096 },
+                                                 { "id" => "gemma-4", "state" => "loaded", "context" => 93_696 }]),
+                 "among running models, the one with the most room wins"
+
+    events = []
+    answer = ai_ask_stream(sample_data, [{ "role" => "user", "content" => "What should I focus on tonight?" }]) { |event| events << event }
+    assert_equal "Study for the Unit 2 Test.", answer
+    assert_equal %w[gemma-3 gemma-4], @fake.requests.map { |request| request["body"]["model"] }
+    assert_equal "Study for the Unit 2 Test.", events.select { |event| event["type"] == "token" }.sum("") { |event| event["text"] }
+    ai_ask(sample_data, [{ "role" => "user", "content" => "Hi" }])
+    assert_equal "gemma-4", @fake.requests.last["body"]["model"], "the working model is remembered"
+
+    save_spark_model("gemma-3", %w[gemma-3 gemma-4])
+    error = assert_raises(AiUnavailable) { ai_ask(sample_data, [{ "role" => "user", "content" => "Hi" }]) }
+    assert_match(/gemma-3 on the PC only has room for 4096 tokens, but Spark's class notes need about 5900\. Pick a different model/, error.message)
+    assert_equal "gemma-3", @fake.requests.last["body"]["model"], "a model someone picked isn't swapped"
   end
 end
