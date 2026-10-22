@@ -194,6 +194,19 @@
         }
       end
 
+      module_due_tomorrow_events(
+        data,
+        known_events: missing + upcoming,
+        today: today
+      ).each do |event|
+        action_candidates[["module", event["course_id"], event["html_url"]]] = {
+          "event" => event,
+          "priority" => 2,
+          "urgency" => "Due tomorrow",
+          "urgency_class" => "is-tomorrow"
+        }
+      end
+
       next_actions = action_candidates.values.sort_by do |action|
         [
           action["priority"],
@@ -203,15 +216,6 @@
       end
       visible_next_actions = next_actions.first(3)
       remaining_action_count = [next_actions.length - visible_next_actions.length, 0].max
-      completed_upcoming = upcoming.reject do |event|
-        incomplete_upcoming.include?(event)
-      end
-      incomplete_upcoming_by_date = incomplete_upcoming.group_by do |event|
-        assignment_due_time(event).getlocal.to_date
-      end
-      completed_upcoming_by_date = completed_upcoming.group_by do |event|
-        assignment_due_time(event).getlocal.to_date
-      end
 
       todo = (data["todo"] || []).sort_by do |item|
         assignment_due_time(item) || Time.at(Float::INFINITY)
@@ -339,45 +343,26 @@
       <% else %>
         <div class="next-actions-list">
           <% visible_next_actions.each do |action| %>
-            <%
-              event = action["event"]
-              due = assignment_due_time(event)
-              course_id = assignment_course_id(event)
-              url = assignment_url(event)
-            %>
-            <% if url %>
-              <a class="next-action-card" href="<%= h url %>" target="_blank" rel="noopener noreferrer">
-            <% else %>
-              <div class="next-action-card">
-            <% end %>
-                <span class="next-action-urgency <%= action["urgency_class"] %>">
-                  <%= h action["urgency"] %>
-                </span>
-                <strong><%= h assignment_name(event) %></strong>
-                <span class="next-action-meta">
-                  <%= h display_course_name.call(course_id) %>
-                  <% if due %>
-                    · <%= h due_time_label(due) %>
-                  <% end %>
-                </span>
-                <% if url %>
-                  <span class="next-action-open">Open <span aria-hidden="true">›</span></span>
-                <% end %>
-            <% if url %>
-              </a>
-            <% else %>
-              </div>
-            <% end %>
+            <%= render_partial("next_action_card", binding) %>
           <% end %>
         </div>
 
         <% if remaining_action_count > 0 %>
-          <a class="next-actions-more" href="#this-week">
-            <%= remaining_action_count %>
-            more <%= remaining_action_count == 1 ? "assignment" : "assignments" %>
-            this week
-            <span aria-hidden="true">↓</span>
-          </a>
+          <details class="next-actions-more-details">
+            <summary class="next-actions-more">
+              <span class="next-actions-more-closed">
+                <%= remaining_action_count %>
+                more <%= remaining_action_count == 1 ? "assignment" : "assignments" %>
+                this week
+              </span>
+              <span class="next-actions-more-open">Show fewer</span>
+            </summary>
+            <div class="next-actions-list">
+              <% next_actions.drop(visible_next_actions.length).each do |action| %>
+                <%= render_partial("next_action_card", binding) %>
+              <% end %>
+            </div>
+          </details>
         <% end %>
       <% end %>
     </section>
@@ -743,58 +728,7 @@
 
     </section>
 
-    <!-- =====================================================
-         This Week
-         ===================================================== -->
-
-    <section class="section" id="this-week">
-      <div class="section-header">
-        <h2 class="dashboard-section-title">This Week</h2>
-      </div>
-
-      <div class="card weekly-assignments">
-        <% if incomplete_upcoming.empty? %>
-          <div class="empty-state">
-            <div class="empty-check">✓</div>
-            <div>
-              <strong>Everything due this week is complete.</strong>
-              <span>You're all caught up!</span>
-            </div>
-          </div>
-        <% else %>
-          <% incomplete_upcoming_by_date.each do |_date, events| %>
-            <% first_due = assignment_due_time(events.first) %>
-            <div class="day-group">
-              <div class="day-heading"><%= h date_label(first_due) %></div>
-              <% events.sort_by { |item| assignment_due_time(item) }.each do |event| %>
-                <%= render_partial("assignment_row", binding) %>
-              <% end %>
-            </div>
-          <% end %>
-        <% end %>
-
-        <% unless completed_upcoming.empty? %>
-          <details class="completed-assignments">
-            <summary>
-              <span>Completed</span>
-              <strong><%= completed_upcoming.length %></strong>
-            </summary>
-
-            <div class="completed-assignments-list">
-              <% completed_upcoming_by_date.each do |_date, events| %>
-                <% first_due = assignment_due_time(events.first) %>
-                <div class="day-group">
-                  <div class="day-heading"><%= h date_label(first_due) %></div>
-                  <% events.sort_by { |item| assignment_due_time(item) }.each do |event| %>
-                    <%= render_partial("assignment_row", binding) %>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          </details>
-        <% end %>
-      </div>
-    </section>
+    <%= render_partial("this_week_modules", binding) %>
 
     <!-- =====================================================
          Grades

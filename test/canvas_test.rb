@@ -1,6 +1,39 @@
 require_relative "test_helper"
 
 class CanvasTest < Minitest::Test
+  def test_collection_follows_pagination
+    first = http_response(Net::HTTPOK, '[{"id":1}]', "200", "OK")
+    first["Link"] = "<#{BASE_URL}/api/v1/courses/1/modules?page=2>; rel=\"next\""
+    second = http_response(Net::HTTPOK, '[{"id":2}]', "200", "OK")
+    paths = []
+    responses = [first, second]
+    fake_http = Object.new
+    fake_http.define_singleton_method(:request) do |request|
+      paths << request.path
+      responses.shift
+    end
+    result = with_replaced_method(Net::HTTP, :start, ->(*, **, &block) { block.call(fake_http) }) do
+      canvas_get_all("/api/v1/courses/1/modules")
+    end
+    assert_equal [1, 2], result.map { |item| item["id"] }
+    assert_equal ["/api/v1/courses/1/modules", "/api/v1/courses/1/modules?page=2"], paths
+  end
+
+  def test_collection_rejects_external_and_cyclic_pagination_and_non_arrays
+    [
+      ['[]', '<https://other.example/api>; rel="next"', /outside/],
+      ['[]', "<#{BASE_URL}/api/test>; rel=\"next\"", /repeated/],
+      ['{}', nil, /invalid collection/]
+    ].each do |body, link, message|
+      response = http_response(Net::HTTPOK, body, "200", "OK")
+      response["Link"] = link if link
+      error = with_replaced_method(self, :canvas_get_response, ->(_) { response }) do
+        assert_raises(RuntimeError) { canvas_get_all("/api/test") }
+      end
+      assert_match message, error.message
+    end
+  end
+
   def http_response(response_class, body, code, message)
     response = response_class.new("1.1", code, message)
     response.instance_variable_set(:@read, true)

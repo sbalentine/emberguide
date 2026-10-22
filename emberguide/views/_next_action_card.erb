@@ -1,0 +1,29 @@
+<%
+  event = action["event"]
+  due = assignment_due_time(event)
+  course_id = assignment_course_id(event)
+  url = assignment_url(event)
+%>
+<% if url %>
+  <a class="next-action-card" href="<%= h url %>" target="_blank" rel="noopener noreferrer">
+<% else %>
+  <div class="next-action-card">
+<% end %>
+    <span class="next-action-urgency <%= action["urgency_class"] %>">
+      <%= h action["urgency"] %>
+    </span>
+    <strong><%= h assignment_name(event) %></strong>
+    <span class="next-action-meta">
+      <%= h display_course_name.call(course_id) %>
+      <% if due %>
+        · <%= h due_time_label(due) %>
+      <% end %>
+    </span>
+    <% if url %>
+      <span class="next-action-open">Open <span aria-hidden="true">›</span></span>
+    <% end %>
+<% if url %>
+  </a>
+<% else %>
+  </div>
+<% end %>

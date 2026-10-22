@@ -92,6 +92,44 @@ TOKEN = load_token
 # ============================================================
 
 def canvas_get(path)
+  JSON.parse(canvas_get_response(path).body)
+end
+
+def canvas_get_all(path)
+  items = []
+  visited = {}
+
+  while path
+    raise "Canvas pagination repeated a page." if visited[path]
+
+    visited[path] = true
+    response = canvas_get_response(path)
+    page = JSON.parse(response.body)
+    raise "Canvas returned an invalid collection." unless page.is_a?(Array)
+
+    items.concat(page)
+    next_link = response["Link"].to_s.split(",").find do |link|
+      link.match?(/;\s*rel="next"/)
+    end
+    path = nil
+    next unless next_link
+
+    next_url = next_link[/<([^>]+)>/, 1]
+    raise "Canvas returned an invalid pagination link." unless next_url
+
+    uri = URI.join("#{BASE_URL}/", next_url)
+    base = URI(BASE_URL)
+    unless uri.scheme == base.scheme && uri.host == base.host && uri.port == base.port
+      raise "Canvas pagination link points outside the configured Canvas site."
+    end
+
+    path = uri.request_uri
+  end
+
+  items
+end
+
+def canvas_get_response(path)
   uri = URI("#{BASE_URL}#{path}")
 
   request = Net::HTTP::Get.new(uri)
@@ -114,7 +152,7 @@ def canvas_get(path)
     )
   end
 
-  JSON.parse(response.body)
+  response
 end
 
 def canvas_form_request(method, path, fields)

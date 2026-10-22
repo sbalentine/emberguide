@@ -63,13 +63,17 @@ class DashboardDataTest < Minitest::Test
 
     data = nil
     with_replaced_method(self, :canvas_get, responses) do
-      capture_io { data = fetch_dashboard_data }
+      with_replaced_method(self, :canvas_get_all, ->(_path) { [] }) do
+        capture_io { data = fetch_dashboard_data }
+      end
     end
 
     assert_equal "Avery", data.dig("profile", "short_name")
     assert_equal({ "1" => "Math" }, data["course_names"])
     assert_equal [20], data["todo"].map { |item| item["plannable_id"] }
     assert_equal %w[10 12], data.dig("submissions", "1").keys
+    assert_equal [], data.dig("modules", "1")
+    assert_empty data["modules_errors"]
 
     submission_request = requests.find { |path| path.include?("students/submissions") }
     assert_includes submission_request, "assignment_ids%5B%5D=10"
@@ -91,7 +95,9 @@ class DashboardDataTest < Minitest::Test
 
     data = nil
     with_replaced_method(self, :canvas_get, responses) do
-      capture_io { data = fetch_dashboard_data }
+      with_replaced_method(self, :canvas_get_all, ->(_path) { [] }) do
+        capture_io { data = fetch_dashboard_data }
+      end
     end
 
     assert_equal({}, data.dig("submissions", "1"))

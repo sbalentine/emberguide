@@ -31,6 +31,7 @@ require_relative "lib/manual_coursework"
 require_relative "lib/event_journal"
 require_relative "lib/home_assistant_events"
 require_relative "lib/dashboard_data"
+require_relative "lib/course_modules"
 require_relative "lib/email_backups"
 require_relative "lib/school_calendar"
 
@@ -147,6 +148,53 @@ server.mount_proc "/" do |_request, response|
       "Unable to load school dashboard." \
       "\n\n#{e.message}"
   end
+end
+
+server.mount_proc "/modules" do |request, response|
+  unless request.request_method == "GET" && request.path == "/modules"
+    response.status = request.path == "/modules" ? 405 : 404
+    response["Allow"] = "GET" if response.status == 405
+    response.body = "Modules supports GET /modules only."
+    next
+  end
+
+  data = dashboard_data_with_manual
+  response.status = 200
+  response["Content-Type"] = "text/html; charset=utf-8"
+  response["Cache-Control"] = "no-cache"
+  template = ERB.new(File.read(File.join(APP_ROOT, "views", "modules.erb")))
+  response.body = template.result(binding)
+rescue StandardError => e
+  puts "Modules error: #{e.class}: #{e.message}"
+  response.status = 500
+  response["Content-Type"] = "text/plain; charset=utf-8"
+  response.body = "Unable to load modules."
+end
+
+server.mount_proc "/modules/item-content" do |request, response|
+  unless request.request_method == "GET"
+    response.status = 405
+    response["Allow"] = "GET"
+    response.body = "Method not allowed"
+    next
+  end
+
+  course_id = request.query["course_id"].to_s
+  item = DEMO_MODE ? nil : load_module_item_content(course_id, request.query["item_id"].to_s)
+  response["Content-Type"] = "text/html; charset=utf-8"
+  response["Cache-Control"] = "no-store"
+  if item
+    response.status = 200
+    response.body = module_item_content_html(course_id, item)
+  else
+    response.status = 404
+    response.body = "This item can't be loaded here."
+  end
+rescue StandardError => e
+  puts "Module item content error: #{e.class}: #{e.message}"
+  response.status = 502
+  response["Content-Type"] = "text/plain; charset=utf-8"
+  response.body = "Canvas didn't return this item."
 end
 
 server.mount_proc "/refresh" do |request, response|
@@ -1236,6 +1284,13 @@ end
 # ============================================================
 # Navigation JavaScript
 # ============================================================
+
+server.mount_proc "/modules.js" do |_request, response|
+  response.status = 200
+  response["Content-Type"] = "text/javascript; charset=utf-8"
+  response["Cache-Control"] = "no-cache"
+  response.body = File.read(File.join(APP_ROOT, "public", "modules.js"))
+end
 
 server.mount_proc "/navigation.js" do |_request, response|
   response.status = 200

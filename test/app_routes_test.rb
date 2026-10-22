@@ -18,6 +18,106 @@ Minitest.after_run do
 end
 
 class AppRoutesTest < Minitest::Test
+  def test_modules_browsing_is_read_only_and_escapes_canvas_text
+    $dashboard_data["modules"] = {
+      "1" => [{
+        "id" => 50, "name" => "Week <script>alert(1)</script>",
+        "items" => [
+          { "id" => 51, "title" => "Start here", "type" => "SubHeader" },
+          { "id" => 52, "title" => "Weekly overview", "type" => "Page",
+            "completion_requirement" => { "completed" => true } },
+          { "id" => 53, "title" => "Practice", "type" => "Assignment",
+            "content_details" => { "due_at" => "2026-10-23T16:00:00Z" } }
+        ]
+      }]
+    }
+    response = request("/modules")
+    assert_equal "200", response.code
+    assert_includes response.body, "<title>Class Modules</title>"
+    assert_includes response.body, "Week &lt;script&gt;"
+    refute_includes response.body, "<script>alert"
+    assert_includes response.body, 'id="module-1-50"'
+    refute_includes response.body, "data-pin-module"
+    assert_includes response.body, "This Week in Class"
+    assert_includes response.body, 'href="/modules#module-1-50"'
+    assert_match(%r{module-week-links.*Practice}m, response.body)
+    assert_includes response.body, "Due "
+    assert_includes response.body, '<details class="module-items-toggle">'
+    assert_includes response.body, '<details class="module-group"'
+    refute_match(/<details[^>]*\sopen/, response.body)
+    assert_match(%r{<summary>\s*<strong>Start here</strong>\s*<span>2 items</span>}, response.body)
+    assert_includes response.body, "data-module-expand"
+    assert_includes response.body, "1 of 1 requirements complete"
+    assert_includes response.body, "#{BASE_URL}/courses/1/modules/items/52"
+    assert_equal "405", request("/modules", Net::HTTP::Post).code
+    assert_equal "404", request("/modules/invalid").code
+    assert_equal "text/javascript; charset=utf-8", request("/modules.js")["Content-Type"]
+    assert_includes request("/").body, 'href="/modules#module-1-50"'
+    save_course_name_mappings("1" => "Algebra")
+    assert_includes request("/modules").body, ">Algebra</option>"
+    assert_includes request("/").body, 'class="module-eyebrow">Algebra'
+
+    save_hidden_course_ids(["1"])
+    refute_includes request("/modules").body, 'id="module-1-50"'
+    refute_includes request("/").body, 'href="/modules#module-1-50"'
+  end
+
+  def test_module_items_outside_this_week_load_instructions_once_on_open
+    $dashboard_data["modules"] = { "1" => [
+      { "id" => 60, "name" => "Week 9", "items" => [
+        { "id" => 61, "title" => "Today", "type" => "Page", "page_url" => "today",
+          "content" => { "text" => "Saved <text>", "links" => [], "fetched_at" => Time.now.iso8601 } }
+      ] },
+      { "id" => 70, "name" => "Week 8", "items" => [
+        { "id" => 71, "title" => "Last week", "type" => "Page", "page_url" => "last-week" },
+        { "id" => 72, "title" => "Locked", "type" => "Page", "page_url" => "locked",
+          "content_details" => { "locked_for_user" => true } },
+        { "id" => 73, "title" => "Video", "type" => "ExternalUrl" }
+      ] }
+    ] }
+    page = request("/modules").body
+    assert_includes page, "Saved &lt;text&gt;"
+    assert_includes page, 'data-module-content-url="/modules/item-content?course_id=1&amp;item_id=71"'
+    refute_includes page, "item_id=72"
+    refute_includes page, "item_id=73"
+
+    paths = []
+    server_main = TOPLEVEL_BINDING.receiver
+    response = nil
+    capture_io do
+      with_replaced_method(server_main, :canvas_get, ->(path) { paths << path; { "body" => "<p>Read <i>chapter</i> 3</p>" } }) do
+        response = request("/modules/item-content?course_id=1&item_id=71")
+        assert_equal "200", request("/modules/item-content?course_id=1&item_id=71").code
+        assert_equal "404", request("/modules/item-content?course_id=1&item_id=72").code
+        assert_equal "404", request("/modules/item-content?course_id=1&item_id=999").code
+      end
+    end
+    assert_equal "200", response.code
+    assert_includes response.body, "<p>Read chapter 3</p>"
+    assert_equal ["/api/v1/courses/1/pages/last-week"], paths
+    assert_equal "Read chapter 3", JSON.parse(File.read(CACHE_FILE))["modules"]["1"][1]["items"][0].dig("content", "text")
+    assert_includes request("/modules").body, "Read chapter 3"
+    assert_equal "405", request("/modules/item-content?course_id=1&item_id=71", Net::HTTP::Post).code
+
+    capture_io do
+      with_replaced_method(server_main, :canvas_get, ->(_path) { raise "Canvas API error: 500" }) do
+        $dashboard_data["modules"]["1"][1]["items"][0].delete("content")
+        assert_equal "502", request("/modules/item-content?course_id=1&item_id=71").code
+      end
+    end
+  end
+
+  def test_modules_distinguishes_not_loaded_empty_and_failed_states
+    assert_includes request("/modules").body, "haven't been loaded"
+    $dashboard_data["modules"] = { "1" => [] }
+    assert_includes request("/modules").body, "No modules are available"
+    $dashboard_data["modules_errors"] = { "1" => "Could not refresh modules." }
+    assert_includes request("/modules").body, "Could not refresh modules."
+    assert_includes request("/modules").body, "Showing saved modules"
+    $dashboard_data = nil
+    assert_includes request("/modules").body, "Waiting for Canvas data"
+  end
+
   def setup
     FileUtils.rm_f(COURSE_NAME_MAPPINGS_FILE)
     FileUtils.rm_f(GRADE_OVERRIDES_FILE)
@@ -585,17 +685,17 @@ class AppRoutesTest < Minitest::Test
 
     body = request("/").body
     next_actions = body[/<section class="today-summary".*?<\/section>/m]
-    this_week = body[/<section class="section" id="this-week".*?<\/section>/m]
+    visible, more = next_actions.split('class="next-actions-more-details"', 2)
 
-    assert_operator next_actions.index("Overdue worksheet"), :<, next_actions.index("Today practice")
-    assert_operator next_actions.index("Today practice"), :<, next_actions.index("Tomorrow reading")
-    refute_includes next_actions, "Later project"
+    assert_operator visible.index("Overdue worksheet"), :<, visible.index("Today practice")
+    assert_operator visible.index("Today practice"), :<, visible.index("Tomorrow reading")
+    refute_includes visible, "Later project"
+    assert_includes more, "Later project"
     refute_includes next_actions, "Finished quiz"
-    assert_match(/1\s+more assignment\s+this week/, next_actions)
-    refute_includes this_week, "left to do"
-    refute_includes this_week, "Manage Manual Assignments"
-    assert_includes this_week, "Completed"
-    assert_includes this_week, "Finished quiz"
+    assert_match(/1\s+more assignment\s+this week/, more)
+    refute_includes body, 'id="this-week"'
+    assert_operator body.index("My To-Dos"), :<, body.index('id="this-week-in-class"')
+    assert_operator body.index('id="this-week-in-class"'), :<, body.index('id="grades"')
   end
 
   def test_scheduled_email_route_saves_separate_recipients_and_preferences

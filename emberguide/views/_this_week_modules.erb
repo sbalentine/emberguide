@@ -1,0 +1,58 @@
+<% module_course_names = data.fetch("course_names", {}).merge(load_course_name_mappings) %>
+<% module_grade_overrides ||= load_grade_overrides %>
+<section class="section module-week" id="this-week-in-class" aria-labelledby="this-week-heading">
+  <div class="section-header">
+    <h2 class="dashboard-section-title" id="this-week-heading">This Week in Class</h2>
+    <div class="section-header-actions">
+      <a class="section-action-link" href="/modules#browse-modules">Browse All Modules</a>
+    </div>
+  </div>
+  <div class="module-week-grid">
+    <% week_courses = visible_module_courses(data).filter_map do |course|
+         mod = current_week_module(data.dig("modules", course["id"].to_s))
+         [course["id"].to_s, mod] if mod
+       end %>
+    <% if week_courses.empty? %>
+      <p class="module-empty">No class modules loaded yet. Refresh Canvas to fetch them.</p>
+    <% end %>
+    <% week_courses.each do |course_id, mod| %>
+      <% links, link_kind = this_week_links(mod) %>
+      <article class="module-week-card">
+        <span class="module-eyebrow"><%= h module_course_names[course_id] %></span>
+        <a class="module-week-title" href="/modules#module-<%= h module_key(course_id, mod) %>"><%= h mod["name"] %></a>
+        <% if data.dig("modules_errors", course_id) %>
+          <span class="module-warning">Saved copy &middot; refresh unavailable</span>
+        <% end %>
+        <% if links.empty? %>
+          <p class="module-empty">Nothing posted in this module yet.</p>
+        <% else %>
+          <% if link_kind == :pages %>
+            <p class="module-week-note">No Canvas assignments listed. Daily pages:</p>
+          <% end %>
+          <ul class="module-week-links">
+            <% links.each do |item| %>
+              <li>
+                <% if item["content"] %>
+                  <details class="module-item-details">
+                    <summary><%= h item["title"] %><span class="module-sr-only"> (show saved instructions)</span></summary>
+                    <%= module_item_content_html(course_id, item) %>
+                  </details>
+                <% else %>
+                  <a href="<%= h module_item_url(course_id, item) %>" target="_blank" rel="noopener noreferrer"><%= h item["title"] %><span class="module-sr-only"> (opens in Canvas in a new tab)</span></a>
+                <% end %>
+                <% status_label, status_kind = module_item_status(item) %>
+                <% due = parse_canvas_time(item.dig("content_details", "due_at")) %>
+                <% if status_label || due %>
+                  <span class="module-week-meta">
+                    <% if status_label %><span class="module-status module-status-<%= h status_kind %>"><%= h [status_label, module_item_score(item, module_grade_overrides)].compact.join(" · ") %></span><% end %>
+                    <% if due && !module_item_done?(item) %><span<%= ' class="module-due-tomorrow"' if module_item_due_tomorrow?(item, due) %>>Due <%= h date_label(due) %></span><% end %>
+                  </span>
+                <% end %>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+      </article>
+    <% end %>
+  </div>
+</section>

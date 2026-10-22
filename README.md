@@ -56,11 +56,10 @@ while course labels and due times keep each task grounded in the school day.
 
 ### Make the rest of the week predictable
 
-![Upcoming assignments grouped by day with submission status](docs/screenshots/weekly-assignments.png)
-
-The seven-day view groups assignments by date and shows the class, due time,
-and submission status at a glance. Canvas work and manually tracked classes
-share the same timeline, giving families one dependable view of the week ahead.
+**This Week in Class** shows each class's current Canvas module with links to
+its assignments, quizzes, and discussions, plus turned-in and due-tomorrow
+status. Anything beyond the top three in **What to Do Next** expands in place,
+so the rest of the week's unfinished work is one click away.
 
 ### Show progress as a trend, not a verdict
 
@@ -102,6 +101,36 @@ Canvas links make it easy to move from planning to doing.
 Create, edit, and complete Canvas planner notes without leaving the dashboard.
 The seven-day view groups coursework by date and shows each class, due time,
 and submission status, including work from classes tracked outside Canvas.
+
+### Class modules and this week's work
+
+Open **Modules** to browse the weekly instructions, readings, links, and work
+inside each Canvas class. Items retain the teacher's ordering and link back to
+Canvas. Due dates and completion requirements appear where Canvas supplies them;
+a completed requirement does not necessarily mean an assignment was submitted.
+
+The dashboard and Modules page show **This Week in Class**: each class's first
+module, skipping any module whose name contains "Resources", since teachers list
+the current week first. It links straight to that module's assignments, quizzes,
+and discussions. Assignments and graded quizzes show their turned-in status,
+and graded work shows its score (for example, "Graded · 8/10"), including any
+local grade corrections.
+Classes that post the week only as daily pages show those pages instead.
+
+Unfinished module work due tomorrow is also added to **What to Do Next** when
+that assignment is not already listed there.
+
+Click a page, assignment, quiz, or discussion to read its instructions right in
+EmberGuide. The text for This Week in Class is saved during the regular Canvas
+refresh and re-checked at most once an hour. Other items on the Modules page are
+fetched from Canvas the first time they are opened and then kept with the cache.
+Only the text and links are saved: images, attached files, and embedded content
+appear as placeholders or links, so use **Open in Canvas** for those. Locked
+items, links, files, and external tools still open in Canvas.
+
+Modules refresh with the existing Canvas refresh and are included in the cached
+data. If a class's module refresh fails, the view reports the failure and shows
+its saved copy when available.
 
 ### 📈 Encouraging grade context
 
@@ -225,7 +254,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.3.0"
+version: "1.4.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -627,6 +656,34 @@ The HTML/ERB dashboard interface.
 ### `emberguide/public/dashboard.css`
 
 Dashboard styling and responsive layout.
+
+---
+
+## Future development: Canvas OAuth login
+
+A future **Connect to Canvas** flow could replace manually entered personal
+access tokens with Canvas OAuth 2.0. Users would sign in on their school's
+Canvas site and authorize EmberGuide; the app would then refresh short-lived
+API access tokens automatically.
+
+This requires a Canvas API developer key (client ID and client secret) issued
+by the institution's Canvas administrator. A global developer key involves
+Instructure and still needs to be enabled by each institution. OAuth therefore
+cannot be offered for arbitrary schools without their integration approval.
+
+Implementation would need secure credential storage, authorization-state
+validation, automatic token refresh, disconnect/reconnect controls, and a
+callback URL compatible with Canvas's registered redirect-URI requirements,
+including local Home Assistant installations.
+
+Before expanding beyond personal use, revisit authentication: Canvas's
+documentation states that applications used by multiple users must use OAuth
+and that asking other users to manually generate and enter personal access
+tokens violates its API policy.
+
+References: [Canvas OAuth overview](https://developerdocs.instructure.com/services/canvas/oauth2/file.oauth.md),
+[developer keys](https://developerdocs.instructure.com/services/canvas/oauth2/file.developer_keys.md),
+and [OAuth endpoints and redirect requirements](https://developerdocs.instructure.com/services/canvas/oauth2/file.oauth_endpoints.md).
 
 ---
 

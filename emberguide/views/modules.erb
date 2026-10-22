@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080711">
+  <link rel="stylesheet" href="/dashboard.css?v=<%= File.mtime(File.join(APP_ROOT, "public", "dashboard.css")).to_i %>">
+  <title>Class Modules</title>
+</head>
+<body>
+  <main class="container settings-page modules-page">
+    <% navigation_active = "modules" %>
+    <%= render_partial("navigation", binding) %>
+    <header class="settings-header">
+      <div>
+        <h1>Class Modules</h1>
+        <div class="subtitle">The weekly overview, reading, and resources behind the assignments.</div>
+      </div>
+    </header>
+    <% if data %>
+      <% module_course_names = data.fetch("course_names", {}).merge(load_course_name_mappings) %>
+      <% module_grade_overrides = load_grade_overrides %>
+      <%= render_partial("this_week_modules", binding) %>
+      <section aria-labelledby="browse-modules" class="module-browser">
+        <header class="module-section-header">
+          <div>
+            <h2 id="browse-modules">Browse your classes</h2>
+            <p>Teacher order. The first module in each class, other than resources, appears under This Week in Class.</p>
+          </div>
+          <label class="module-filter">
+            Class
+            <select data-module-course-filter>
+              <option value="">All classes</option>
+              <% visible_module_courses(data).each do |course| %>
+                <option value="<%= h course["id"] %>"><%= h module_course_names[course["id"].to_s] %></option>
+              <% end %>
+            </select>
+          </label>
+        </header>
+        <div class="module-toolbar">
+          <button type="button" class="module-toggle-all" data-module-expand="true">Expand all</button>
+          <button type="button" class="module-toggle-all" data-module-expand="false">Collapse all</button>
+        </div>
+        <% visible_module_courses(data).each do |course| %>
+          <% course_id = course["id"].to_s; course_modules = data.dig("modules", course_id) %>
+          <section class="module-course" data-module-course="<%= h course_id %>" aria-label="<%= h module_course_names[course_id] %>">
+            <h2 class="module-course-title"><%= h module_course_names[course_id] %></h2>
+            <% if data.dig("modules_errors", course_id) %>
+              <p class="module-warning" role="status">
+                <%= h data["modules_errors"][course_id] %>
+                <% if course_modules %>
+                  Showing saved modules<%= " from #{h data.dig("modules_updated_at", course_id)}" if data.dig("modules_updated_at", course_id) %>.
+                <% end %>
+              </p>
+            <% end %>
+            <% if course_modules.nil? && !data.dig("modules_errors", course_id) %>
+              <p class="module-empty">Modules haven't been loaded for this class yet. Refresh from the dashboard to fetch them.</p>
+            <% elsif course_modules == [] %>
+              <p class="module-empty">No modules are available to this Canvas account for this class.</p>
+            <% end %>
+            <% Array(course_modules).each do |mod| %>
+              <article class="card module-card" id="module-<%= h module_key(course_id, mod) %>">
+                <header class="module-card-header">
+                  <div>
+                    <span class="module-eyebrow"><%= h module_course_names[course_id] %></span>
+                    <h3><%= h mod["name"] %></h3>
+                    <% if (progress = module_progress(mod)) %>
+                      <p><%= h progress %></p>
+                    <% end %>
+                    <% if mod["state"] == "locked" %>
+                      <p class="module-warning">Locked in Canvas<%= " until #{h due_time_label(parse_canvas_time(mod["unlock_at"]))}" if parse_canvas_time(mod["unlock_at"]) %>. Check Canvas for access requirements.</p>
+                    <% end %>
+                  </div>
+                </header>
+                <details class="module-items-toggle">
+                  <summary>Show <%= h module_group_summary(Array(mod["items"]).reject { |item| item["type"] == "SubHeader" }) %></summary>
+                  <% module_item_groups(mod["items"]).each do |group| %>
+                    <% if group["heading"] %>
+                      <% indent_offset = group["heading"]["indent"].to_i + 1 %>
+                      <details class="module-group" style="--module-indent: <%= [[group["heading"]["indent"].to_i, 0].max, 5].min %>">
+                        <summary>
+                          <strong><%= h group["heading"]["title"] %></strong>
+                          <span><%= h module_group_summary(group["items"]) %></span>
+                        </summary>
+                        <% if group["items"].any? %>
+                          <ol class="module-items">
+                            <% group["items"].each do |item| %>
+                              <%= render_partial("module_item", binding) %>
+                            <% end %>
+                          </ol>
+                        <% end %>
+                      </details>
+                    <% else %>
+                      <% indent_offset = 0 %>
+                      <ol class="module-items">
+                        <% group["items"].each do |item| %>
+                          <%= render_partial("module_item", binding) %>
+                        <% end %>
+                      </ol>
+                    <% end %>
+                  <% end %>
+                </details>
+                <footer class="module-card-footer">
+                  <a class="module-link" href="<%= h module_canvas_url(course_id, mod) %>" target="_blank" rel="noopener noreferrer">Open module in Canvas &nearr;</a>
+                  <span>Read-only &middot; opening links does not mark work complete here.</span>
+                </footer>
+              </article>
+            <% end %>
+          </section>
+        <% end %>
+      </section>
+    <% else %>
+      <p class="card module-empty">Waiting for Canvas data. Visit the dashboard and refresh to load your classes.</p>
+    <% end %>
+  </main>
+  <script src="/modules.js?v=<%= File.mtime(File.join(APP_ROOT, "public", "modules.js")).to_i %>" defer></script>
+</body>
+</html>

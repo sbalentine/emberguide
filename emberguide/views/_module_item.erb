@@ -1,0 +1,34 @@
+<li class="module-item" style="--module-indent: <%= [[item["indent"].to_i - indent_offset, 0].max, 5].min %>">
+  <div class="module-item-main">
+    <span class="module-item-type"><%= h({ "ExternalUrl" => "Link", "ExternalTool" => "Tool", "Page" => "Reading / page" }.fetch(item["type"], item["type"])) %></span>
+    <% if item["content"] %>
+      <details class="module-item-details">
+        <summary><%= h item["title"] %><span class="module-sr-only"> (show saved instructions)</span></summary>
+        <%= module_item_content_html(course_id, item) %>
+      </details>
+    <% elsif module_item_content_loadable?(course_id, item) %>
+      <details class="module-item-details" data-module-content-url="/modules/item-content?course_id=<%= h CGI.escape(course_id.to_s) %>&amp;item_id=<%= h CGI.escape(item["id"].to_s) %>">
+        <summary><%= h item["title"] %><span class="module-sr-only"> (show instructions)</span></summary>
+        <div class="module-content" aria-live="polite">
+          <p class="module-content-empty" data-module-content-status>Loading from Canvas…</p>
+          <div class="module-content-footer"><a class="module-link" href="<%= h module_item_url(course_id, item) %>" target="_blank" rel="noopener noreferrer">Open in Canvas<span class="module-sr-only"> (new tab)</span></a></div>
+        </div>
+      </details>
+    <% else %>
+      <a href="<%= h module_item_url(course_id, item) %>" target="_blank" rel="noopener noreferrer"><%= h item["title"] %><span class="module-sr-only"> (opens in Canvas in a new tab)</span></a>
+    <% end %>
+  </div>
+  <div class="module-item-meta">
+    <% due = parse_canvas_time(item.dig("content_details", "due_at")) %>
+    <% status_label, status_kind = module_item_status(item) %>
+    <% if status_label %><span class="module-status module-status-<%= h status_kind %>"><%= h [status_label, module_item_score(item, module_grade_overrides)].compact.join(" · ") %></span><% end %>
+    <% if due %><span<%= ' class="module-due-tomorrow"' if module_item_due_tomorrow?(item, due) %>>Due <%= h date_label(due) %> &middot; <%= h due_time_label(due) %></span><% end %>
+    <% if item.dig("completion_requirement", "completed") == true %>
+      <span class="module-completed">Requirement complete</span>
+    <% elsif item["completion_requirement"] %>
+      <span>Requirement pending</span>
+    <% end %>
+    <% lock_label, lock_kind = module_item_lock_status(item) %>
+    <% if lock_label %><span class="module-lock module-lock-<%= h lock_kind %>"><%= h lock_label %></span><% end %>
+  </div>
+</li>
