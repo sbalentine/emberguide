@@ -69,6 +69,41 @@ class WebSearchTest < Minitest::Test
     end
     assert_equal "Definitions for Nile River", ai_validate_public_query("Definitions for Nile River", data)
   end
+
+  def test_public_educational_wording_is_allowed_without_changing_the_query
+    [
+      "6th grade vocabulary definitions for Egypt and Kush",
+      "sixth-grade student study guide for geography",
+      "Grade 6 teacher resources about vegetation",
+      "Percent practice and missing number problems",
+      "Definitions of grade, score, submitted, and overdue",
+      "What factors affect river grades and musical scores?"
+    ].each do |query|
+      assert_equal query, ai_validate_public_query(query, {})
+    end
+  end
+
+  def test_personal_records_remain_blocked_alongside_public_grade_levels
+    [
+      "6th grade vocabulary; her grade is B",
+      "Grade 6 student guide; my science score is 89",
+      "Her current math grade needs help",
+      "Avery's quiz score is low",
+      "missing assignments about geography",
+      "overdue homework on Egypt",
+      "submitted work about rivers",
+      "student name Avery geography",
+      "teacher email for study guide",
+      "grade: 89 geography help",
+      "score A geography",
+      "6th grade guide with 89%",
+      "6th grade guide; score 9/10",
+      "student guide; contact parent@example.com"
+    ].each do |query|
+      assert_raises(WebSearchUnavailable, query) { ai_validate_public_query(query, {}) }
+    end
+  end
+
   def test_search_returns_bounded_deduplicated_numbered_sources
     body = search_result
     body["content"][0]["text"] += <<~TEXT

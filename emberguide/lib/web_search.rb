@@ -29,8 +29,11 @@ def ai_validate_public_query(query, data)
   # Mapped names conventionally end in the teacher's name ("Science - Smith").
   names.concat(ai_course_names(data).values.flat_map { |name| name.to_s.split(/\s[-–]\s/).drop(1).join(" ").scan(/[[:alpha:]]{3,}/) })
   credentials = [TOKEN, ai_settings["api_key"], options["gmail_app_password"], ENV["GMAIL_APP_PASSWORD"]]
-  private_pattern = %r{https?://|www\.|@|(?:\d[\s().-]*){7,}|\b(?:grades?|scores?|gpa|percent|missing|overdue|submitted|student|teacher|password|token|api[_ -]?key)\b|\d\s*%|\b\d+\s*/\s*\d+\b|\b\d{4}-\d{2}-\d{2}\b}i
-  unsafe = query.match?(private_pattern) ||
+  private_pattern = %r{https?://|www\.|@|(?:\d[\s().-]*){7,}|\b(?:gpa|password|token|api[_ -]?key)\b|\d\s*%|\b\d+\s*/\s*\d+\b|\b\d{4}-\d{2}-\d{2}\b}i
+  # Grade levels describe public learning material, not a student's marks.
+  privacy_text = query.gsub(/\b(?:\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[ -]+grade\b|\bgrade[ -]+\d{1,2}\b/i, "school level")
+  personal_records = /\b(?:my|our|your|her|his|their|[[:alpha:]]+['’]s)\s+(?:(?:current|math|science|english|history|class|assignment|test|quiz)\s+)*(?:grades?|scores?|missing|overdue|submitted|submissions?)\b|\b(?:grade|score)\s*(?:(?:is|was|of|at|:|=)\s*)?(?:\d+(?:\.\d+)?|[a-f][+-]?)(?![\w])|\b(?:missing|overdue|submitted)\s+(?:work|assignments?|homework|submissions?)\b|\b(?:student|teacher|school)\s+(?:id|name|email|address|phone)\b/i
+  unsafe = query.match?(private_pattern) || privacy_text.match?(personal_records) ||
     names.uniq.any? { |name| query.match?(/(?<![[:alpha:]])#{Regexp.escape(name)}(?![[:alpha:]])/i) } ||
     credentials.compact.reject(&:empty?).any? { |value| query.include?(value) }
   if unsafe
@@ -49,6 +52,7 @@ def ai_prepare_web_search(data, messages)
     Return ONLY a JSON object: {"query":"public educational search request"}.
     Include relevant vocabulary words verbatim so sources can explain them. Maximum #{WEB_SEARCH_MAX_QUERY_CHARS} characters.
     Include no student, parent, teacher, school, or class-section names; no grades, scores, submissions, due dates, IDs, URLs, credentials, or private narrative.
+    Public grade-level descriptions such as "6th grade", "student study guide", and generic educational topics such as "percent" are allowed.
     Do not send a full answer or copied class notes. Send only the public topic, needed terms, and the requested explanation (for example, definitions).
     If the relevant material cannot be identified confidently, the question is only about grades/scheduling,
     or you cannot prepare a public request without personal details, return {"query":null}.

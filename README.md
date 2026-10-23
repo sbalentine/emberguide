@@ -180,7 +180,10 @@ The original question, full local answer, grades, class notes, and chat history
 are not attached to Exa requests. Spark then combines the web sources with its
 local context to answer the original question.
 Known student and mapped teacher names, credentials, and common private-data
-patterns are blocked before searching. These checks are not a guarantee of
+patterns are blocked before searching. Public educational wording such as
+"6th grade vocabulary", "student study guide", and "percent practice" is allowed;
+personal marks and submission
+records are still blocked. These checks are not a guarantee of
 anonymity: the model is generating text from private context. Leave web search
 off for sensitive questions. If Spark cannot identify the study topic or prepare
 a permitted handoff, it reports an error without sending a search.
@@ -366,7 +369,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.7.0"
+version: "1.7.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
