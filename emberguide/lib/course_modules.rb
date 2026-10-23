@@ -189,6 +189,64 @@ def attach_module_item_content(course_id, modules, known: {}, fetched: {}, now: 
       puts "Unable to fetch module item #{item["id"]} for course #{course_id}: #{e.class}: #{e.message}"
     end
   end
+  attach_linked_module_pages(course_id, modules, known: known, fetched: fetched, now: now)
+end
+
+def linked_module_page_path(course_id, url)
+  uri = URI.parse(url.to_s)
+  base = URI.parse(BASE_URL)
+  return unless uri.scheme == base.scheme && uri.host == base.host && uri.port == base.port && !uri.userinfo
+
+  match = uri.path.match(%r{\A/courses/#{Regexp.escape(course_id.to_s)}/pages/([^/]+)/?\z})
+  return unless match
+
+  slug = URI.decode_www_form_component(match[1])
+  "/api/v1/courses/#{CGI.escape(course_id.to_s)}/pages/#{CGI.escape(slug)}"
+rescue URI::Error, ArgumentError
+  nil
+end
+
+# Follow only direct links from this week's pages, sharing one saved copy per
+# target across daily notes. Linked pages' own links are never followed.
+def attach_linked_module_pages(course_id, modules, known: {}, fetched: {}, now: Time.now)
+  items = Array(current_week_module(modules)&.dig("items"))
+    .select { |item| item["type"] == "Page" && item.dig("content_details", "locked_for_user") != true }
+  saved_pages = (known.values + items.filter_map { |item| item["content"] })
+    .flat_map { |content| Array(content["linked_pages"]) }
+    .to_h { |page| [linked_module_page_path(course_id, page["url"]), page] }
+  resolved = {}
+  items.each do |item|
+    content = item["content"]
+    next unless content
+
+    pages = Array(content["links"]).filter_map do |link|
+      path = linked_module_page_path(course_id, link["url"])
+      next unless path
+
+      resolved[path] ||= begin
+        saved = saved_pages[path]
+        fetched_at = parse_canvas_time(saved&.dig("fetched_at"))
+        if fetched_at && now - fetched_at < MODULE_CONTENT_MAX_AGE
+          saved
+        else
+          begin
+            record = fetched[path] ||= canvas_get(path)
+            raise "Page is locked or unpublished" if record["locked_for_user"] == true || record["published"] == false
+
+            module_html_content(record["body"], max_text: nil).merge(
+              "url" => link["url"], "title" => record["title"] || link["text"],
+              "updated_at" => record["updated_at"], "fetched_at" => now.iso8601
+            )
+          rescue StandardError => e
+            puts "Unable to refresh linked page #{path}: #{e.class}: #{e.message}"
+            (saved || { "url" => link["url"], "title" => link["text"] })
+              .merge("error" => "Could not refresh this linked page. Open it in Canvas or try refreshing again.")
+          end
+        end
+      end
+    end
+    content["linked_pages"] = pages unless pages.empty?
+  end
 end
 
 def module_html_attribute(attributes, name)
@@ -245,7 +303,7 @@ end
 # Teacher HTML is reduced to plain text plus a list of links, so nothing from
 # Canvas is ever rendered as markup. Images and embeds become placeholders and
 # headings are kept as "## " lines.
-def module_html_content(html)
+def module_html_content(html, max_text: MODULE_CONTENT_MAX_TEXT)
   links = []
   text = html.to_s.gsub(/\s+/, " ")
     .gsub(%r{<(script|style|noscript)\b[^>]*>.*?</\1\s*>}mi, " ")
@@ -280,7 +338,7 @@ def module_html_content(html)
   text = module_unescape_html(text)
     .lines.map { |line| line.gsub(/[ \t]+/, " ").strip }.join("\n")
     .gsub(/\n{3,}/, "\n\n").strip
-  text = "#{text[0, MODULE_CONTENT_MAX_TEXT].rstrip}…" if text.length > MODULE_CONTENT_MAX_TEXT
+  text = "#{text[0, max_text].rstrip}…" if max_text && text.length > max_text
 
   { "text" => text, "links" => links.uniq { |link| link["url"] } }
 end
@@ -326,7 +384,13 @@ def load_module_item_content(course_id, item_id)
 end
 
 def module_item_content_html(course_id, item)
-  content = item["content"] || {}
+  saved_content_html(item["content"], module_item_url(course_id, item))
+end
+
+# Saved instructions (from module_html_content) as escaped paragraphs, links,
+# and an "Open in Canvas" footer.
+def saved_content_html(content, canvas_url)
+  content ||= {}
   blocks = content["text"].to_s.split(/\n{2,}/).reject(&:empty?)
   html = +%(<div class="module-content">)
   if blocks.empty?
@@ -343,13 +407,22 @@ def module_item_content_html(course_id, item)
   if links.any?
     html << %(<div class="module-content-links"><span>Links</span><ul>)
     links.each do |link|
-      html << %(<li><a href="#{h link["url"]}" target="_blank" rel="noopener noreferrer">#{h link["text"]}</a></li>)
+      linked_page = Array(content["linked_pages"]).find { |page| page["url"] == link["url"] }
+      if linked_page
+        html << %(<li><details class="module-item-details"><summary>#{h linked_page["title"]} (show saved page)</summary>)
+        html << %(<p class="module-content-empty">#{h linked_page["error"]}</p>) if linked_page["error"]
+        html << saved_content_html(linked_page, link["url"]) << "</details></li>"
+      else
+        html << %(<li><a href="#{h link["url"]}" target="_blank" rel="noopener noreferrer">#{h link["text"]}</a></li>)
+      end
     end
     html << "</ul></div>"
   end
   fetched_at = parse_canvas_time(content["fetched_at"])
   html << %(<div class="module-content-footer">)
-  html << %(<a class="module-link" href="#{h module_item_url(course_id, item)}" target="_blank" rel="noopener noreferrer">Open in Canvas<span class="module-sr-only"> (new tab)</span></a>)
+  if canvas_url
+    html << %(<a class="module-link" href="#{h canvas_url}" target="_blank" rel="noopener noreferrer">Open in Canvas<span class="module-sr-only"> (new tab)</span></a>)
+  end
   html << %(<span>Saved #{h date_label(fetched_at)} &middot; #{h due_time_label(fetched_at)}</span>) if fetched_at
   html << "</div></div>"
 end
@@ -502,7 +575,10 @@ def module_due_tomorrow_events(data, known_events: [], today: Date.today)
         "name" => item["title"],
         "due_at" => item.dig("content_details", "due_at"),
         "html_url" => module_item_url(course_id, item)
-      }
+      }.tap do |event|
+        content = module_item_saved_content(data, course_id, item)
+        event["content"] = content if content
+      end
     end
   end.each_with_object([]) do |event, events|
     name = event["name"].to_s.strip.downcase

@@ -35,10 +35,11 @@
           <ul class="module-week-links">
             <% links.each do |item| %>
               <li>
-                <% if item["content"] %>
+                <% saved_content = module_item_saved_content(data, course_id, item) %>
+                <% if saved_content %>
                   <details class="module-item-details">
                     <summary><%= h item["title"] %><span class="module-sr-only"> (show saved instructions)</span></summary>
-                    <%= module_item_content_html(course_id, item) %>
+                    <%= saved_content_html(saved_content, module_item_url(course_id, item)) %>
                   </details>
                 <% else %>
                   <a href="<%= h module_item_url(course_id, item) %>" target="_blank" rel="noopener noreferrer"><%= h item["title"] %><span class="module-sr-only"> (opens in Canvas in a new tab)</span></a>

@@ -1,6 +1,7 @@
 require "date"
 require "fileutils"
 require "net/http"
+require "set"
 require "json"
 require "uri"
 
@@ -9,8 +10,8 @@ require "uri"
 # the class data EmberGuide has already saved; nothing is fetched from Canvas
 # at question time and the Canvas token is never sent.
 
-AI_CONTEXT_MAX_CHARS = 48_000
-AI_INSTRUCTIONS_MAX_CHARS = 1_500
+# Instructions are never cut short; this only guards against a runaway cache.
+AI_CONTEXT_MAX_CHARS = 400_000
 AI_MAX_MESSAGES = 12
 AI_MAX_MESSAGE_CHARS = 2_000
 AI_RECENT_GRADES = 12
@@ -369,8 +370,13 @@ def ai_event_line(data, event, course_names)
 end
 
 def ai_instruction_text(text)
-  lines = text.to_s.lines.map(&:strip).reject { |line| line.empty? || line == "[Image]" }
-  ai_trim(lines.map { |line| line.sub(/\A#+\s*(.+)\z/, '\1:') }.join("\n"), AI_INSTRUCTIONS_MAX_CHARS)
+  lines = text.to_s.lines.map { |line| line.gsub(/[ \t]+/, " ").strip }.reject { |line| line.empty? || line == "[Image]" }
+  lines.map { |line| line.sub(/\A#+\s*(.+)\z/, '\1:') }.join("\n")
+end
+
+def ai_indented_instructions(text, indent)
+  text = ai_instruction_text(text)
+  text.empty? ? "" : "\n#{indent}  Instructions:\n#{text.gsub(/^/, "#{indent}    ")}"
 end
 
 def ai_module_item_line(item, overrides)
@@ -382,10 +388,36 @@ def ai_module_item_line(item, overrides)
   label, = module_item_status(item)
   details << [label, module_item_score(item, overrides)].compact.join(" ") if label
   indent = "  " * [item["indent"].to_i, 3].min
-  line = "#{indent}- #{item["title"]} (#{details.join("; ")})"
-  text = ai_instruction_text(item.dig("content", "text"))
-  line += "\n#{indent}  Instructions:\n#{text.gsub(/^/, "#{indent}    ")}" unless text.empty?
-  line
+  "#{indent}- #{item["title"]} (#{details.join("; ")})#{ai_indented_instructions(item.dig("content", "text"), indent)}"
+end
+
+# Every open assignment (not graded, not locked) in visible classes with its
+# full instructions, soonest due first. Assignments whose instructions already
+# appear under this week's modules point there instead of repeating them.
+def ai_open_assignment_lines(data, course_names, overrides, shown_ids)
+  visible_ids = visible_module_courses(data).map { |course| course["id"].to_s }
+  records = data.fetch("assignments", {}).flat_map do |course_id, assignments|
+    next [] unless visible_ids.include?(course_id.to_s)
+
+    Array(assignments).select do |record|
+      assignment_open_for_ai?(record) && !canvas_assignment_hidden?(record, overrides)
+    end.map { |record| [course_id.to_s, record] }
+  end
+  records.sort_by! do |_course_id, record|
+    due = parse_canvas_time(record["due_at"])
+    [due ? 0 : 1, due.to_i, record["name"].to_s]
+  end
+
+  records.map do |course_id, record|
+    details = ["due #{ai_time(parse_canvas_time(record["due_at"])) || "no date"}", submission_status(record["submission"])[:label]]
+    details << "#{format_number(record["points_possible"])} pts" if record["points_possible"].to_f.positive?
+    line = "- #{course_names[course_id] || course_id}: #{record["name"]} (#{details.join("; ")})"
+    if shown_ids.include?("#{course_id}:#{record["id"]}")
+      "#{line}\n  Instructions: listed under This week in class."
+    else
+      line + ai_indented_instructions(record.dig("content", "text"), "")
+    end
+  end
 end
 
 AI_TEST_PATTERN = /\b(tests?|quiz(?:zes)?|exams?|benchmarks?|assessments?|midterms?)\b/i
@@ -457,6 +489,14 @@ def ai_test_lines(data, upcoming_events, week_modules, course_names, now)
         line = line.strip.sub(/\A[•*-]\s*/, "")
         add.call(course, line, "class notes") if line.length <= AI_TEST_NOTE_MAX_CHARS && line.match?(AI_TEST_PATTERN)
       end
+      Array(item.dig("content", "linked_pages")).each do |page|
+        title = page["title"].to_s
+        add.call(course, title, "linked class page") if title.match?(AI_TEST_PATTERN)
+        ai_instruction_text(page["text"]).each_line do |line|
+          line = line.strip.sub(/\A[•*-]\s*/, "")
+          add.call(course, line, "linked class page") if line.length <= AI_TEST_NOTE_MAX_CHARS && line.match?(AI_TEST_PATTERN)
+        end
+      end
     end
   end
   lines.sort.map(&:last)
@@ -477,18 +517,34 @@ def ai_class_context(data, now: Time.now)
   upcoming = upcoming_events.map { |event| ai_event_line(data, event, course_names) }
   grade_summary, recent_grades = ai_grade_lines(data, course_names, overrides)
 
+  shown_ids = Set.new
   week_modules = visible_module_courses(data).filter_map do |course|
     course_id = course["id"].to_s
     mod = current_week_module(data.dig("modules", course_id))
-    [course_names[course_id] || course["name"], mod] if mod
+    next unless mod
+
+    items = Array(mod["items"]).map do |item|
+      content = module_item_saved_content(data, course_id, item)
+      assignment = module_item_assignment_id(item)
+      shown_ids << "#{course_id}:#{assignment}" if assignment && !ai_instruction_text(content&.dig("text")).empty?
+      content ? item.merge("content" => content) : item
+    end
+    [course_names[course_id] || course["name"], mod.merge("items" => items)]
   end
   weeks = week_modules.map do |course_name, mod|
     lines = ["### #{course_name}: #{mod["name"]}"]
     module_announcements(mod).each { |note| lines << "Announcement: #{note["title"]}" }
     lines.concat(Array(mod["items"]).filter_map { |item| ai_module_item_line(item, overrides) })
+    linked_pages = Array(mod["items"]).flat_map { |item| Array(item.dig("content", "linked_pages")) }
+      .uniq { |page| page["url"] }
+    linked_pages.each do |page|
+      lines << "Linked class page: #{page["title"]} (#{page["url"]})#{ai_indented_instructions(page["text"], "")}"
+      lines << "  #{page["error"]}" if page["error"]
+    end
     lines.join("\n")
   end
   tests = ai_test_lines(data, upcoming_events, week_modules, course_names, now)
+  open_work = ai_open_assignment_lines(data, course_names, overrides, shown_ids)
 
   sections = [
     "# EmberGuide class data",
@@ -498,6 +554,7 @@ def ai_class_context(data, now: Time.now)
     "## Missing work\n#{missing.empty? ? "None." : missing.join("\n")}",
     "## Due in the next 7 days\n#{upcoming.empty? ? "Nothing due." : upcoming.join("\n")}",
     "## This week in class (each class's current module, in the teacher's order)\n#{weeks.empty? ? "No modules loaded." : weeks.join("\n\n")}",
+    "## Open assignments and their instructions (not graded yet, soonest due first)\n#{open_work.empty? ? "None saved yet." : open_work.join("\n")}",
     "## Recently graded\n#{recent_grades.empty? ? "None." : recent_grades.join("\n")}"
   ]
   context = sections.join("\n\n")

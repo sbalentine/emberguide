@@ -3,7 +3,29 @@
   due = assignment_due_time(event)
   course_id = assignment_course_id(event)
   url = assignment_url(event)
+  saved_content = assignment_saved_content(data, course_id, assignment_id(event), event)
 %>
+<% if saved_content %>
+  <details class="next-action-card next-action-details">
+    <summary>
+      <span class="next-action-urgency <%= action["urgency_class"] %>">
+        <%= h action["urgency"] %>
+      </span>
+      <strong><%= h assignment_name(event) %></strong>
+      <span class="next-action-meta">
+        <%= h display_course_name.call(course_id) %>
+        <% if due %>
+          · <%= h due_time_label(due) %>
+        <% end %>
+      </span>
+      <span class="next-action-open">
+        <span class="next-action-show">Details <span aria-hidden="true">▾</span></span>
+        <span class="next-action-hide">Hide details <span aria-hidden="true">▴</span></span>
+      </span>
+    </summary>
+    <%= saved_content_html(saved_content, url) %>
+  </details>
+<% else %>
 <% if url %>
   <a class="next-action-card" href="<%= h url %>" target="_blank" rel="noopener noreferrer">
 <% else %>
@@ -26,4 +48,5 @@
   </a>
 <% else %>
   </div>
+<% end %>
 <% end %>

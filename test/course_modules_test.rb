@@ -526,4 +526,97 @@ class CourseModulesTest < Minitest::Test
     assert_includes html, "Saved "
     assert_includes module_item_content_html(1, item.merge("content" => { "text" => "" })), "No written instructions saved"
   end
+
+  def test_linked_pages_are_same_origin_same_course_only
+    assert_equal "/api/v1/courses/1/pages/study",
+      linked_module_page_path(1, "#{BASE_URL}/courses/1/pages/study?module_item_id=9#notes")
+    assert_equal "/api/v1/courses/1/pages/10%2F23",
+      linked_module_page_path(1, "#{BASE_URL}/courses/1/pages/10%2F23")
+    [
+      "https://example.com/courses/1/pages/study",
+      "#{BASE_URL}/courses/2/pages/study",
+      "#{BASE_URL}/courses/1/assignments/9",
+      "#{BASE_URL}/courses/1/pages/study/extra",
+      "javascript:alert(1)", "http://["
+    ].each { |url| assert_nil linked_module_page_path(1, url), url }
+  end
+
+  def test_direct_linked_pages_are_cached_deduplicated_and_not_crawled
+    now = Time.parse("2026-10-22T12:00:00Z")
+    url = "#{BASE_URL}/courses/1/pages/vocab"
+    daily = {
+      "text" => "Study vocabulary", "fetched_at" => now.iso8601,
+      "links" => [{ "text" => "Study", "url" => url }]
+    }
+    week = [{ "name" => "Week", "items" => [
+      { "id" => 1, "type" => "Page", "page_url" => "monday", "content" => daily.dup },
+      { "id" => 2, "type" => "Page", "page_url" => "tuesday", "content" => daily.dup },
+      { "id" => 3, "type" => "Page", "content_details" => { "locked_for_user" => true }, "content" => daily.dup }
+    ] }]
+    long_text = "Practice spelling. " * 1500
+    calls = []
+    get = lambda do |path|
+      calls << path
+      {
+        "title" => "Vocabulary Quiz Friday",
+        "body" => "<p>#{long_text}</p><a href='#{BASE_URL}/courses/1/pages/deeper'>More</a>"
+      }
+    end
+    with_replaced_method(self, :canvas_get, get) { attach_module_item_content(1, week, now: now) }
+    assert_equal ["/api/v1/courses/1/pages/vocab"], calls
+    pages = week.first["items"].map { |item| item.dig("content", "linked_pages") }
+    assert_equal pages[0], pages[1]
+    assert_nil pages[2]
+    assert_includes pages[0].first["text"], long_text.strip
+    assert_nil pages[0].first["linked_pages"]
+    known = known_module_item_content(week)
+    with_replaced_method(self, :canvas_get, ->(_) { flunk "Fresh page requested" }) do
+      attach_module_item_content(1, week, known: known, now: now + 59 * 60)
+    end
+    output, = capture_io do
+      with_replaced_method(self, :canvas_get, ->(_) { raise "403 Forbidden" }) do
+        attach_module_item_content(1, week, known: known, now: now + 61 * 60)
+      end
+    end
+    saved = week.first.dig("items", 0, "content", "linked_pages", 0)
+    assert_includes output, "Unable to refresh linked page"
+    assert_includes saved["text"], long_text.strip
+    assert_includes saved["error"], "Could not refresh"
+    with_replaced_method(self, :canvas_get, get) do
+      attach_linked_module_pages(1, week, known: known, now: now + 62 * 60)
+    end
+    refute week.first.dig("items", 0, "content", "linked_pages", 0).key?("error")
+  end
+
+  def test_linked_page_failure_without_copy_is_visible_and_restricted_body_is_not_saved
+    url = "#{BASE_URL}/courses/1/pages/locked"
+    week = [{ "name" => "Week", "items" => [
+      { "type" => "Page", "content" => { "links" => [{ "text" => "Study", "url" => url }] } }
+    ] }]
+    capture_io do
+      with_replaced_method(self, :canvas_get, ->(_) { { "locked_for_user" => true, "body" => "Not available" } }) do
+        attach_linked_module_pages(1, week)
+      end
+    end
+    saved = week.first.dig("items", 0, "content", "linked_pages", 0)
+    assert_nil saved["text"]
+    html = saved_content_html(week.first.dig("items", 0, "content"), nil)
+    assert_includes html, "Could not refresh this linked page"
+    assert_includes html, url
+    refute_includes html, "Not available"
+  end
+
+  def test_linked_page_details_escape_text_and_keep_other_links
+    url = "#{BASE_URL}/courses/1/pages/quiz"
+    html = saved_content_html({
+      "text" => "Daily notes",
+      "links" => [{ "text" => "Study", "url" => url }, { "text" => "External", "url" => "https://example.com" }],
+      "linked_pages" => [{ "url" => url, "title" => "<Quiz>", "text" => "<script>alert(1)</script>" }]
+    }, nil)
+    assert_includes html, "<summary>&lt;Quiz&gt; (show saved page)</summary>"
+    assert_includes html, "&lt;script&gt;alert(1)&lt;/script&gt;"
+    assert_includes html, 'href="https://example.com"'
+    assert_includes html, "Open in Canvas"
+    refute_includes html, "<script>"
+  end
 end

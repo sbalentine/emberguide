@@ -1,10 +1,11 @@
 <li class="module-item" style="--module-indent: <%= [[item["indent"].to_i - indent_offset, 0].max, 5].min %>">
   <div class="module-item-main">
     <span class="module-item-type"><%= h({ "ExternalUrl" => "Link", "ExternalTool" => "Tool", "Page" => "Reading / page" }.fetch(item["type"], item["type"])) %></span>
-    <% if item["content"] %>
+    <% saved_content = module_item_saved_content(data, course_id, item) %>
+    <% if saved_content %>
       <details class="module-item-details">
         <summary><%= h item["title"] %><span class="module-sr-only"> (show saved instructions)</span></summary>
-        <%= module_item_content_html(course_id, item) %>
+        <%= saved_content_html(saved_content, module_item_url(course_id, item)) %>
       </details>
     <% elsif module_item_content_loadable?(course_id, item) %>
       <details class="module-item-details" data-module-content-url="/modules/item-content?course_id=<%= h CGI.escape(course_id.to_s) %>&amp;item_id=<%= h CGI.escape(item["id"].to_s) %>">

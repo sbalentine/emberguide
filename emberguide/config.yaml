@@ -1,6 +1,6 @@
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.5.2"
+version: "1.6.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

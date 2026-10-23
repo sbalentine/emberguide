@@ -131,6 +131,22 @@ Only the text and links are saved: images, attached files, and embedded content
 appear as placeholders or links, so use **Open in Canvas** for those. Locked
 items, links, files, and external tools still open in Canvas.
 
+Canvas pages linked directly from this week's daily pages are also saved and
+re-checked hourly. Expand them under **Links** to read the full linked page
+inside EmberGuide, or use **Open in Canvas**. Only pages on the same Canvas
+server and in the same class are fetched; their own links are not followed.
+Repeated links share a cached copy. If a linked page cannot be refreshed, an
+error appears alongside its last saved copy when available.
+
+Assignments open the same way everywhere they appear: **What to Do Next** cards,
+**Missing**, **Recent Canvas Grades**, and module assignments and quizzes. Click
+one to read the teacher's description; a card with instructions expands across
+the row and shows **Details**/**Hide details**. Each Canvas refresh saves every
+assignment in the visible classes (one paginated request per class), and a
+description is only re-read when Canvas reports that the assignment changed.
+Assignments without a description still link straight to Canvas. The grade
+editor in Settings and the school calendar do not show descriptions.
+
 Modules refresh with the existing Canvas refresh and are included in the cached
 data. If a class's module refresh fails, the view reports the failure and shows
 its saved copy when available.
@@ -142,10 +158,16 @@ network, such as a gaming PC, and **Spark** appears in the menu for questions li
 "What should I focus on tonight?" or "What should I study for the Unit 2 test?". Answers
 come only from data EmberGuide has already saved: current grades, missing and
 upcoming work, each class's This Week in Class module with its announcements
-and saved instructions, and recent scores. Nothing is fetched from Canvas at
-question time, and the Canvas token is never sent. **What Spark can see**
-on the Spark page shows exactly what goes to the model (about 5–6k tokens for a
-typical week).
+and saved instructions, every open assignment (not yet graded, not locked) with
+its full instructions, the full text of directly linked class pages (once per
+page), and recent scores. Linked pages are also checked for test and quiz
+mentions. Instructions are never shortened, and
+an assignment already described under This Week in Class isn't repeated. Nothing
+is fetched from Canvas at question time, and the Canvas token is never sent.
+**What Spark can see** on the Spark page shows exactly what goes to the model
+and about how many tokens it uses. Because the full instructions are included,
+pick a model with a large context window; in Automatic mode Spark tries another
+installed model if the class notes don't fit.
 
 Tests, quizzes, and benchmarks come first. Teachers often announce tests in
 module headers and daily notes ("‼️ Unit 2 Test on Friday ‼️") rather than as
@@ -312,7 +334,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.5.2"
+version: "1.6.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

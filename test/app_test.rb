@@ -146,6 +146,33 @@ class AppTest < Minitest::Test
     refute_includes html, "Quiz <One>"
   end
 
+  def test_dashboard_assignments_open_their_saved_instructions
+    due = (Time.now + 3600).iso8601
+    data = {
+      "profile" => { "short_name" => "Emberlynn" },
+      "courses" => [{ "id" => 1, "name" => "Math" }],
+      "course_names" => { "1" => "Math" },
+      "missing" => [{ "id" => 10, "course_id" => 1, "name" => "Fractions <quiz>", "due_at" => due,
+                      "html_url" => "https://canvas.example/courses/1/assignments/10" }],
+      "upcoming" => [],
+      "todo" => [],
+      "grades" => [],
+      "submissions" => {},
+      "assignments" => { "1" => [{ "id" => 10, "content" => { "text" => "Study <b>unit 3</b> before the quiz" } }] }
+    }
+
+    template = ERB.new(File.read(File.join(APP_ROOT, "views", "dashboard.erb")))
+    html = with_replaced_method(self, :school_calendar_events, ->(**_kwargs) { [] }) do
+      template.result(binding)
+    end
+
+    assert_includes html, '<details class="next-action-card next-action-details">'
+    assert_includes html, '<details class="module-item-details assignment-details">'
+    assert_includes html, "Study &lt;b&gt;unit 3&lt;/b&gt; before the quiz"
+    assert_includes html, 'href="https://canvas.example/courses/1/assignments/10"'
+    refute_includes html, "<b>unit 3</b>"
+  end
+
   def test_next_actions_show_all_caught_up_instead_of_zero_counts
     data = {
       "profile" => { "short_name" => "Emberlynn" },

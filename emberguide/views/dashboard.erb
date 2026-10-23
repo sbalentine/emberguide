@@ -476,18 +476,11 @@
             <div class="assignment-main">
 
               <div class="assignment-title">
-
-                <% if url %>
-                  <a
-                    href="<%= h url %>"
-                    target="_blank"
-                  >
-                    <%= h assignment_name(assignment) %>
-                  </a>
-                <% else %>
-                  <%= h assignment_name(assignment) %>
-                <% end %>
-
+                <%= assignment_title_html(
+                  assignment_name(assignment),
+                  url,
+                  assignment_saved_content(data, course_id, assignment_id(assignment), assignment)
+                ) %>
               </div>
 
               <div class="assignment-course">
@@ -937,18 +930,11 @@
                 <div class="assignment-main">
 
                   <div class="assignment-title">
-
-                    <% if url %>
-                      <a
-                        href="<%= h url %>"
-                        target="_blank"
-                      >
-                        <%= h assignment["name"] %>
-                      </a>
-                    <% else %>
-                      <%= h assignment["name"] %>
-                    <% end %>
-
+                    <%= assignment_title_html(
+                      assignment["name"],
+                      url,
+                      assignment_saved_content(data, assignment["course_id"], assignment["id"], submission)
+                    ) %>
                   </div>
 
                   <div class="assignment-course">

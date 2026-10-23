@@ -125,6 +125,51 @@ class AiAssistantTest < Minitest::Test
     refute_includes context, "test-token"
   end
 
+  def test_linked_class_pages_include_full_instructions_once_and_prioritize_tests
+    data = sample_data
+    text = "Practice every word. " * 1500
+    linked = { "title" => "Vocabulary Quiz Friday", "url" => "#{BASE_URL}/courses/7/pages/vocab", "text" => text }
+    items = data.dig("modules", "7", 0, "items")
+    items[1]["content"]["linked_pages"] = [linked]
+    items[2]["content"] = { "linked_pages" => [linked] }
+    context = ai_class_context(data, now: Time.local(2026, 10, 22, 16))
+    assert_includes context, text.strip
+    assert_equal 1, context.scan(text.strip).length
+    assert_equal 1, context.scan("Linked class page: Vocabulary Quiz Friday").length
+    tests = context.split("## Classes and current grades").first
+    assert_includes tests, "Vocabulary Quiz Friday (Friday = tomorrow, Oct 23)"
+    assert_includes tests, "[linked class page]"
+    assert_equal 1, tests.scan("Vocabulary Quiz Friday").length
+    assert_includes context, linked["url"]
+  end
+
+  def test_class_context_includes_full_instructions_for_open_assignments
+    data = sample_data
+    long_steps = (1..300).map { |step| "Step #{step}: show your work." }.join("\n")
+    data["modules"]["7"].first["items"].last["content_id"] = 70
+    data["assignments"] = { "7" => [
+      { "id" => 70, "name" => "Seasons worksheet", "due_at" => (Time.now + 86_400).iso8601,
+        "content" => { "text" => "Label the four seasons." } },
+      { "id" => 71, "name" => "Lab report", "points_possible" => 20, "due_at" => (Time.now + 172_800).iso8601,
+        "submission" => { "workflow_state" => "unsubmitted" }, "content" => { "text" => long_steps } },
+      { "id" => 72, "name" => "Old quiz", "submission" => { "workflow_state" => "graded", "score" => 9 },
+        "content" => { "text" => "Graded already" } },
+      { "id" => 73, "name" => "Locked test", "locked_for_user" => true, "content" => { "text" => "Not open yet" } }
+    ] }
+
+    context = ai_class_context(data)
+    assert_includes context, "## Open assignments and their instructions"
+    assert_match(/      - Seasons worksheet \(Assignment; due [^)]+\)\n        Instructions:\n          Label the four seasons\./, context)
+    assert_includes context, "- Science: Seasons worksheet (due "
+    assert_includes context, "Instructions: listed under This week in class."
+    assert_includes context, "- Science: Lab report (due "
+    assert_includes context, "20 pts"
+    assert_includes context, "Step 300: show your work."
+    refute_includes context, "Graded already"
+    refute_includes context, "Not open yet"
+    refute_includes context, "trimmed to fit"
+  end
+
   def test_clean_messages_drops_system_turns_and_requires_a_question
     cleaned = ai_clean_messages([
       { "role" => "assistant", "content" => "Hi!" },

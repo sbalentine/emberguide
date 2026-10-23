@@ -155,6 +155,7 @@ def fetch_dashboard_data
     "submissions" => submissions,
     "updated_at" => Time.now.iso8601
   }.merge(fetch_module_catalog(courses, previous: dashboard_data))
+    .merge(fetch_assignment_catalog(courses, previous: dashboard_data))
 end
 
 # ============================================================
