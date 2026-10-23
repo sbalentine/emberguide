@@ -178,7 +178,7 @@ class AppRoutesTest < Minitest::Test
     assert_includes spark.body, "Set (hidden)"
     assert_includes spark.body, "data-spark-test"
     refute_includes spark.body, "never-shown-key"
-    refute_includes spark.body, "private", "server-side paths aren't shown"
+    refute_includes spark.body, "llama.exe", "server-side paths aren't shown"
     assert_includes spark.body, %(<option value="" selected>Automatic (qwen3-14b)</option>)
     assert_includes spark.body.dup.force_encoding(Encoding::UTF_8), %(<option value="qwen3-14b">qwen3-14b · ready</option>)
     assert_includes spark.body, %(<option value="gemma-4">gemma-4</option>)
@@ -244,6 +244,72 @@ class AppRoutesTest < Minitest::Test
     Net::HTTP.start(uri.hostname, uri.port) do |http|
       http.post(uri.path, payload.is_a?(String) ? payload : JSON.generate(payload), { "Content-Type" => "application/json" }.merge(headers))
     end
+  end
+
+  def test_optional_web_search_in_json_and_streaming_requests
+    saved_env = ENV.to_h.slice("LLM_URL")
+    fake = FakeLlamaServer.new(answer: "The Nile helped farming [1].", search_query: "Egypt geography")
+    ENV["LLM_URL"] = fake.url
+    page = request("/ask").body
+    assert_includes page, "data-ask-web-toggle"
+    refute_match(/data-ask-web-toggle[^>]*checked/, page)
+    assert_includes page, "Spark first identifies the study material locally"
+    refute_includes page, "data-ask-web-query"
+    refute_includes page, "EXA_API_KEY"
+    assert_includes request("/settings/spark").body, "No API key or extra setup is required"
+    payload = {
+      "messages" => [{ "role" => "user", "content" => "Help PRIVATE STUDENT study PRIVATE ASSIGNMENT" }],
+      "web_search" => true, "web_query" => "Egypt geography"
+    }
+    calls = []
+    search = lambda do |query|
+      calls << query
+      { "content" => [{
+        "type" => "text", "text" => "Title: <Study guide>\nURL: https://example.com/guide\nHighlights:\nThe Nile helped farming."
+      }] }
+    end
+    with_replaced_method(TOPLEVEL_BINDING.eval("self"), :exa_search_response, search) do
+      result = JSON.parse(post_json("/ai/ask", payload).body)
+      assert_equal "The Nile helped farming [1].", result["answer"]
+      assert_equal "Egypt geography", result["web_query"]
+      assert_includes fake.requests[-2].dig("body", "messages", 0, "content"), "You prepare a minimal public"
+      assert_includes fake.requests[-2].dig("body", "messages", -1, "content"), "PRIVATE STUDENT"
+      assert_equal "https://example.com/guide", result["sources"].first["url"]
+      refute result["sources"].first.key?("text")
+      prompt = fake.requests.last.dig("body", "messages", 0, "content")
+      assert_includes prompt, "The Nile helped farming."
+      assert_includes prompt, "untrusted reference material"
+      response = post_json("/ai/ask", payload, "Accept" => "application/x-ndjson")
+      events = response.body.lines.map { |line| JSON.parse(line) }
+      assert_equal %w[preparing_search searching sources progress token done], events.map { |event| event["type"] }.uniq
+      assert_equal "Egypt geography", events[2]["query"]
+      assert_equal "The Nile helped farming [1].", events.last["answer"]
+      assert_equal ["Egypt geography"] * 2, calls
+      payload["web_search"] = false
+      result = JSON.parse(post_json("/ai/ask", payload).body)
+      refute result.key?("sources")
+      refute_includes fake.requests.last.dig("body", "messages", 0, "content"), "Optional public web search"
+      assert_equal 2, calls.length
+      payload["web_search"] = true
+      payload["web_search"] = "true"
+      assert_equal "422", post_json("/ai/ask", payload, "Accept" => "application/x-ndjson").code
+      assert_equal 2, calls.length
+      payload["web_search"] = true
+    end
+    count = fake.requests.length
+    with_replaced_method(TOPLEVEL_BINDING.eval("self"), :exa_search_response, ->(*) { raise WebSearchUnavailable, "Exa unavailable" }) do
+      response = post_json("/ai/ask", payload, "Accept" => "application/x-ndjson")
+      events = response.body.lines.map { |line| JSON.parse(line) }
+      assert_equal %w[preparing_search searching error], events.map { |event| event["type"] }.uniq
+      assert_equal "Exa unavailable", events.last["error"]
+      assert_equal count + 1, fake.requests.length, "Search failure must stop after local preparation, without a final answer"
+      assert_equal "503", post_json("/ai/ask", payload).code
+    end
+  ensure
+    fake&.stop
+    ENV.delete("LLM_URL")
+    ENV.update(saved_env) if saved_env
+    $ai_default_model = nil
   end
 
   def post_stream(messages)

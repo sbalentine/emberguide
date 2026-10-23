@@ -36,6 +36,7 @@ require_relative "lib/assignment_details"
 require_relative "lib/email_backups"
 require_relative "lib/school_calendar"
 require_relative "lib/ai_assistant"
+require_relative "lib/web_search"
 
 # ============================================================
 # Startup
@@ -244,10 +245,11 @@ server.mount_proc "/ai/ask" do |request, response|
   begin
     payload = JSON.parse(request.body.to_s)
     messages = payload.is_a?(Hash) ? payload["messages"] : nil
+    ai_clean_messages(messages)
+    use_web = ai_web_requested?(payload)
     data = dashboard_data_with_manual || {}
 
     if request["Accept"].to_s.include?("application/x-ndjson")
-      ai_clean_messages(messages)
       response.status = 200
       response["Content-Type"] = "application/x-ndjson; charset=utf-8"
       response["X-Accel-Buffering"] = "no"
@@ -260,7 +262,8 @@ server.mount_proc "/ai/ask" do |request, response|
           raise AiClientGone, e.message
         end
         begin
-          answer = ai_ask_stream(data, messages) { |event| send_event.call(event) }
+          web_search = ai_prepare_web_search(data, messages) { |event| send_event.call(event) } if use_web
+          answer = ai_ask_stream(data, messages, web_search: web_search) { |event| send_event.call(event) }
           send_event.call("type" => "done", "answer" => answer)
         rescue AiClientGone
           nil
@@ -276,9 +279,12 @@ server.mount_proc "/ai/ask" do |request, response|
       next
     end
 
-    answer = ai_ask(data, messages)
+    web_search = ai_prepare_web_search(data, messages) if use_web
+    answer = ai_ask(data, messages, web_search: web_search)
     response.status = 200
-    response.body = JSON.generate("answer" => answer)
+    result = { "answer" => answer }
+    result.merge!("web_query" => web_search["query"], "sources" => web_search_source_links(web_search["sources"])) if web_search
+    response.body = JSON.generate(result)
   rescue JSON::ParserError, ArgumentError => e
     response.status = 422
     response.body = JSON.generate("error" => e.is_a?(ArgumentError) ? e.message : "That question couldn't be read.")

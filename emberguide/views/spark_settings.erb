@@ -93,6 +93,12 @@
     <% end %>
 
     <section class="card calendar-settings-card">
+      <h2>Optional web search</h2>
+      <p class="settings-intro">Enable <strong>Search the web with Exa</strong> when asking Spark. Spark uses local class data to identify the study topic or vocabulary list, automatically searches Exa, then combines the sources into its answer. Raw grades, Canvas notes, and chat history are not attached to Exa requests. Checks block known names and common private-data patterns, but cannot guarantee anonymity. The generated search appears with the sources.</p>
+      <p class="settings-intro">Spark uses <a href="https://exa.ai/docs/get-started/exa-mcp" target="_blank" rel="noopener noreferrer">Exa's hosted MCP service</a>. No API key or extra setup is required. Free service limits apply; Spark reports a search error if Exa is unavailable or its limit is reached.</p>
+    </section>
+
+    <section class="card calendar-settings-card">
       <h2>Changing the connection</h2>
       <% if spark_config_source == "addon" %>
         <p class="settings-intro">Set <code>llm_url</code> and <code>llm_api_key</code> in the Home Assistant add-on Configuration tab, then restart the add-on.</p>

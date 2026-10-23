@@ -3,6 +3,7 @@
   const form = document.querySelector("[data-ask-form]");
   const log = document.querySelector("[data-ask-log]");
   const input = form?.querySelector("textarea");
+  const webToggle = form?.querySelector("[data-ask-web-toggle]");
   const testButton = document.querySelector("[data-spark-test]");
   const checkResult = document.querySelector("[data-spark-check]");
   const messages = [];
@@ -170,6 +171,8 @@
       const seconds = Math.round((Date.now() - started) / 1000);
       const elapsed = seconds >= 3 ? ` · ${seconds}s` : "";
       if (stage === "connecting") label.textContent = `Waking up Spark…${elapsed}`;
+      else if (stage === "preparing_search") label.textContent = `Finding study material locally…${elapsed}`;
+      else if (stage === "searching") label.textContent = `Searching the web…${elapsed}`;
       else if (stage === "reading") label.textContent = `Reading your class notes… ${detail}`;
       else label.textContent = `Writing an answer…${elapsed}`;
     };
@@ -177,6 +180,18 @@
     paint();
 
     return {
+      preparingSearch() {
+        stage = "preparing_search";
+        paint();
+      },
+      searching() {
+        stage = "searching";
+        paint();
+      },
+      connecting() {
+        stage = "connecting";
+        paint();
+      },
       update({ total, cache = 0, processed, time_ms: timeMs }) {
         if (!total) return;
         const fraction = Math.min(processed / total, 1);
@@ -225,9 +240,13 @@
   const ask = async (question) => {
     question = question.trim();
     if (!question || form.dataset.busy) return;
+    const useWeb = webToggle?.checked === true;
+    let query = "";
 
     form.dataset.busy = "true";
     form.querySelector(".ask-send").disabled = true;
+    form.querySelector("[data-ask-clear]").disabled = true;
+    if (webToggle) webToggle.disabled = true;
     messages.push({ role: "user", content: question });
     addBubble("user", question);
     input.value = "";
@@ -235,6 +254,7 @@
     pending.classList.add("is-pending");
     const progress = showProgress(pending);
     let answer = "";
+    let sources = [];
     let paintTimer = 0;
     const PAINT_INTERVAL_MS = 120;
 
@@ -259,11 +279,43 @@
       if (following) pending.scrollIntoView({ block: "end" });
     };
 
+    const appendSources = () => {
+      if (!sources.length) return;
+      const section = document.createElement("section");
+      section.className = "ask-sources";
+      section.setAttribute("aria-label", "Web sources");
+      const label = document.createElement("strong");
+      label.textContent = "Web sources";
+      const topic = document.createElement("p");
+      topic.textContent = `Searched Exa for: ${query}`;
+      const list = document.createElement("ol");
+      sources.forEach((source) => {
+        let url;
+        try {
+          url = new URL(source.url);
+        } catch {
+          return;
+        }
+        if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return;
+        const item = document.createElement("li");
+        item.value = source.id;
+        const link = document.createElement("a");
+        link.href = url.href;
+        link.textContent = source.title;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        item.append(link);
+        list.append(item);
+      });
+      section.append(label, topic, list);
+      pending.append(section);
+    };
+
     try {
       const response = await fetch("/ai/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, web_search: useWeb }),
       });
       if (!response.ok || !response.headers.get("Content-Type")?.includes("ndjson")) {
         const result = await response.json().catch(() => ({}));
@@ -272,7 +324,15 @@
 
       let finished = false;
       await readStream(response, (event) => {
-        if (event.type === "progress") {
+        if (event.type === "preparing_search") {
+          progress.preparingSearch();
+        } else if (event.type === "searching") {
+          progress.searching();
+        } else if (event.type === "sources") {
+          sources = event.sources;
+          query = event.query;
+          progress.connecting();
+        } else if (event.type === "progress") {
           if (!answer) progress.update(event);
         } else if (event.type === "token") {
           if (!answer) {
@@ -292,6 +352,7 @@
       if (!finished) throw new Error("Spark stopped before finishing. Try asking again.");
 
       paintAnswer(true);
+      appendSources();
       messages.push({ role: "assistant", content: answer });
       setStatus("Spark is online", "on");
     } catch (error) {
@@ -300,12 +361,16 @@
       pending.classList.remove("ask-markdown");
       pending.textContent = error.message;
       pending.classList.add("is-error");
+      appendSources();
+      input.value = question;
       if (/offline/i.test(error.message)) setStatus("Spark is offline", "off");
     } finally {
       progress.stop();
       pending.classList.remove("is-pending", "is-streaming");
       delete form.dataset.busy;
       form.querySelector(".ask-send").disabled = false;
+      form.querySelector("[data-ask-clear]").disabled = false;
+      if (webToggle) webToggle.disabled = false;
       input.focus();
     }
   };
@@ -327,8 +392,10 @@
   });
 
   document.querySelector("[data-ask-clear]")?.addEventListener("click", () => {
+    if (form.dataset.busy) return;
     messages.length = 0;
     log.replaceChildren();
+    if (webToggle) webToggle.checked = false;
     input.focus();
   });
 })();

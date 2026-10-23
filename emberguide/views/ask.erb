@@ -41,6 +41,13 @@
         <form class="ask-form" data-ask-form>
           <label class="module-sr-only" for="ask-input">Your question</label>
           <textarea id="ask-input" name="question" rows="2" maxlength="<%= AI_MAX_MESSAGE_CHARS %>" placeholder="Ask Spark about homework, tests, or grades&hellip;" required></textarea>
+          <div class="ask-web">
+            <label class="ask-web-toggle">
+              <input type="checkbox" data-ask-web-toggle>
+              Search the web with Exa
+            </label>
+            <p>Spark first identifies the study material locally, then automatically sends a focused public topic or vocabulary list to Exa for sources. Raw grades, class notes, and chat history are not attached. The generated search is checked for known names and private-data patterns, but these checks cannot guarantee anonymity. No Exa API key is needed; free limits apply.</p>
+          </div>
           <div class="ask-actions">
             <button type="button" class="ask-clear" data-ask-clear>New conversation</button>
             <button type="submit" class="ask-send">Ask</button>

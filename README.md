@@ -155,8 +155,8 @@ its saved copy when available.
 
 Connect a [llama.cpp](https://github.com/ggml-org/llama.cpp) server on your home
 network, such as a gaming PC, and **Spark** appears in the menu for questions like
-"What should I focus on tonight?" or "What should I study for the Unit 2 test?". Answers
-come only from data EmberGuide has already saved: current grades, missing and
+"What should I focus on tonight?" or "What should I study for the Unit 2 test?". By
+default, answers come only from data EmberGuide has already saved: current grades, missing and
 upcoming work, each class's This Week in Class module with its announcements
 and saved instructions, every open assignment (not yet graded, not locked) with
 its full instructions, the full text of directly linked class pages (once per
@@ -168,6 +168,38 @@ is fetched from Canvas at question time, and the Canvas token is never sent.
 and about how many tokens it uses. Because the full instructions are included,
 pick a model with a large context window; in Automatic mode Spark tries another
 installed model if the class notes don't fit.
+
+For public study resources, turn on **Search the web with Exa** before asking a
+question. Spark first reads the local class context and conversation to identify
+the actual lesson or vocabulary list and the explanation you want. It generates
+a focused public search request automatically, such as definitions for the
+vocabulary words in the teacher's study guide. Only that generated request and
+a fixed educational objective go to
+[Exa's hosted MCP service](https://exa.ai/docs/get-started/exa-mcp).
+The original question, full local answer, grades, class notes, and chat history
+are not attached to Exa requests. Spark then combines the web sources with its
+local context to answer the original question.
+Known student and mapped teacher names, credentials, and common private-data
+patterns are blocked before searching. These checks are not a guarantee of
+anonymity: the model is generating text from private context. Leave web search
+off for sensitive questions. If Spark cannot identify the study topic or prepare
+a permitted handoff, it reports an error without sending a search.
+No Exa API key, extra service, or tool-calling model is needed. Keyless access
+has free service limits and requires internet access.
+
+The toggle starts off and resets when starting a new conversation. Each
+web-enabled question runs one search, using at most four sources with bounded
+excerpts. Spark shows **Finding study material locally...**, then
+**Searching the web...**, then streams its answer with
+numbered citations and clickable **Web sources**. Source text is untrusted
+reference material, not instructions; teacher notes remain authoritative for
+due dates and assigned work. Search failures and free-limit errors are shown
+explicitly instead of silently answering without the requested sources.
+Turning web search off prevents new searches; prior answers remain in the
+current conversation. **What Spark can see** previews saved school context,
+not the additional per-question search results. The generated query appears
+with the web sources. Preparing the request adds a local-model pass, so
+web-enabled answers take longer.
 
 Tests, quizzes, and benchmarks come first. Teachers often announce tests in
 module headers and daily notes ("‼️ Unit 2 Test on Friday ‼️") rather than as
@@ -334,7 +366,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.6.0"
+version: "1.7.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -625,6 +657,13 @@ Do not:
 Spark sends saved class data (names, assignments, grades, and module
 instructions) to the configured `llm_url`. Point it only at a server you control
 on your own network, and set an `--api-key` on llama-server.
+
+Optional Spark web search automatically generates a focused public request
+locally from the study material and user's intent. Only that request and a fixed
+educational objective go to Exa's hosted MCP endpoint. Raw Canvas data and chat
+history are not attached. Name and private-data checks reduce disclosure risk
+but cannot guarantee anonymity; leave the toggle off for sensitive questions.
+Search results return to the configured Spark model for the final answer.
 
 The repository's `.gitignore` excludes common secret and runtime files, but always review changes before pushing:
 

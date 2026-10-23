@@ -3858,6 +3858,14 @@ button.calendar-month-day[aria-expanded="true"] {
 .ask-suggestion:hover, .ask-clear:hover { border-color: var(--purple); }
 .ask-form textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--text); font: inherit; resize: vertical; }
 .ask-form textarea:focus-visible, .ask-suggestion:focus-visible, .ask-clear:focus-visible, .ask-send:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.ask-web { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.ask-web-toggle { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
+.ask-web input[type="checkbox"] { accent-color: var(--purple); }
+.ask-web input:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.ask-web p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.ask-sources { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }
+.ask-sources p { color: var(--muted); }
+.ask-sources ol { padding-left: 22px; margin-bottom: 0; }
 .ask-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .ask-send { padding: 9px 20px; border: 0; border-radius: 10px; background: var(--purple); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
 .ask-send:disabled { opacity: 0.6; cursor: wait; }

@@ -5,7 +5,7 @@ require_relative "test_helper"
 class FakeLlamaServer
   attr_reader :requests, :url
 
-  def initialize(answer: "You have nothing due tomorrow.", status: 200, api_key: nil, models: ["qwen3-14b"], too_small: [])
+  def initialize(answer: "You have nothing due tomorrow.", status: 200, api_key: nil, models: ["qwen3-14b"], too_small: [], search_query: nil)
     @requests = []
     @server = WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1", AccessLog: [], Logger: WEBrick::Log.new(File::NULL))
     @server.mount_proc("/health") { |_req, res| res.body = '{"status":"ok"}' }
@@ -47,7 +47,9 @@ class FakeLlamaServer
         end
       else
         res["Content-Type"] = "application/json"
-        res.body = JSON.generate("choices" => [{ "message" => { "role" => "assistant", "content" => "<think>\nhmm\n</think>\n\n#{answer}" } }])
+        reply = search_query && body.dig("messages", 0, "content").start_with?("You prepare a minimal public") ?
+          JSON.generate("query" => search_query) : answer
+        res.body = JSON.generate("choices" => [{ "message" => { "role" => "assistant", "content" => "<think>\nhmm\n</think>\n\n#{reply}" } }])
       end
     end
     @thread = Thread.new { @server.start }
