@@ -33,8 +33,13 @@
 
     <% if email_error %>
       <div class="backup-message error" role="alert">
-        <strong>Email not sent.</strong>
+        <strong><%= request.query["action"] == "generate_overview" ? "Overview not generated." : "Email not sent." %></strong>
         <%= h email_error %>
+      </div>
+    <% elsif request.query["generated"] == "overview" %>
+      <div class="backup-message success" role="status">
+        <strong>Spark overview generated.</strong>
+        Preview the digest to see today's cached overview. No email was sent.
       </div>
     <% elsif request.query["sent"] == "backup" %>
       <div class="backup-message success" role="status">
@@ -140,7 +145,39 @@
           </span>
         </label>
 
+        <label class="backup-daily-field">
+          <input
+            type="checkbox"
+            name="digest_spark_overview"
+            value="true"
+            <%= "checked" if settings["digest_spark_overview"] %>
+          >
+          <span>
+            <strong>Include Spark overview</strong>
+            <small>
+              Prepares "Today at a glance" at 5:00 AM local time using saved school data.
+              The email uses today's cached overview, with no AI call during delivery.
+              If Spark is unavailable, the normal digest still sends.
+            </small>
+          </span>
+        </label>
+
+        <% if settings["digest_spark_overview"] %>
+          <% overview = daily_overview_for_digest %>
+          <p class="settings-help">
+            <%= h(overview["error"] || digest_overview_source_label(overview)) %>
+          </p>
+        <% end %>
+
         <div class="scheduled-email-card-actions">
+          <button
+            class="scheduled-email-send-button"
+            type="submit"
+            name="action"
+            value="generate_overview"
+          >
+            Generate Overview Now
+          </button>
           <a
             class="scheduled-email-secondary-link"
             href="/settings/emails/digest-preview"

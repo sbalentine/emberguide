@@ -19,6 +19,7 @@ ENV["BACKUP_SETTINGS_FILE"] = File.join(TEST_TMP_DIR, "backup_settings.json")
 ENV["SCHOOL_CALENDAR_SETTINGS_FILE"] = File.join(TEST_TMP_DIR, "school_calendar_settings.json")
 ENV["SPARK_SETTINGS_FILE"] = File.join(TEST_TMP_DIR, "spark_settings.json")
 ENV["SPARK_HISTORY_FILE"] = File.join(TEST_TMP_DIR, "spark_history.json")
+ENV["DAILY_OVERVIEW_FILE"] = File.join(TEST_TMP_DIR, "daily_overview.json")
 ENV["ACHIEVEMENT_HISTORY_FILE"] = File.join(TEST_TMP_DIR, "achievement_history.json")
 ENV["ACHIEVEMENT_SETTINGS_FILE"] = File.join(TEST_TMP_DIR, "achievement_settings.json")
 

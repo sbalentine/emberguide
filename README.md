@@ -460,7 +460,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.8.0"
+version: "1.9.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -702,6 +702,36 @@ The daily digest can be previewed without sending, delivered on demand, or
 scheduled for 6:00 AM local time. Backups can be downloaded directly, emailed
 on demand, or scheduled for 3:00 AM. Backup archives never include
 `/data/options.json`, Canvas tokens, or Gmail credentials.
+
+Enable **Include Spark overview** under **Scheduled Emails** to add an optional
+**Today at a glance** section above the grades in both HTML and plain-text digests.
+It summarizes saved class context and digest details into up to four short points:
+confirmed tests, today's work and deadlines, relevant schedule changes, and useful
+priorities. It uses the configured local Spark model, never web search or chat
+history, and follows the same module-date and conditional make-up safeguards as
+Spark chat. Missing or stale information must not be treated as proof of an empty
+school day.
+
+A separate daily-automation worker prepares the overview at **5:00 AM local time**.
+It caches the latest result in `daily_overview.json` next to the Canvas cache
+(`DAILY_OVERVIEW_FILE` can override the location). This derived cache is not
+included in backups; the opt-in preference is. The worker catches up after a
+restore as well: restoring a backup invalidates the derived overview so it cannot
+describe a different saved dataset. It also catches up after a
+restart later than 5:00 AM and allows three attempts per day, at least 20 minutes
+apart. Each local-model generation has a 20-second total limit. Preview and email
+delivery only read the cache; they never wait for the model. All recipients use
+the same prepared overview.
+
+The overview shows when it was prepared and when its Canvas data was refreshed.
+The detailed email sections still use current saved data, which may have changed
+since preparation. Only a result for today's local date is eligible: yesterday's
+summary is never reused as today's. If today's overview is missing, invalid, or
+unavailable, a notice appears and the normal digest still sends. Use **Generate
+Overview Now** to prepare or refresh today's cache without sending an email,
+including before 5:00 AM or after automatic retries are exhausted. A failed
+refresh preserves any valid overview already prepared for today. The setting is
+off by default and does not change existing email schedules.
 
 Use **Restore Backup** under **Settings → Data Backup** to validate and import a
 downloaded ZIP.

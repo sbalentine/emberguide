@@ -38,6 +38,7 @@ require_relative "lib/ai_assistant"
 require_relative "lib/web_search"
 require_relative "lib/spark_history"
 require_relative "lib/email_backups"
+require_relative "lib/daily_automation"
 
 # ============================================================
 # Startup
@@ -63,6 +64,7 @@ if $PROGRAM_NAME == __FILE__
   unless DEMO_MODE || NO_BACKGROUND_MODE
     start_refresh_thread
     start_scheduled_email_thread
+    start_daily_automation_thread
   end
 end
 
@@ -1145,10 +1147,21 @@ server.mount_proc "/settings/emails" do |request, response|
         response["Location"] = "/settings/emails?sent=digest"
         response.body = ""
         next
+      when "generate_overview"
+        unless settings["digest_spark_overview"]
+          raise ArgumentError, "Enable Include Spark overview before generating it."
+        end
+        unless generate_daily_overview(force: true)
+          raise ArgumentError, "The overview could not be generated. Check Spark in Settings or try again after any current generation finishes. Any valid cached overview is unchanged."
+        end
+        response.status = 303
+        response["Location"] = "/settings/emails?generated=overview"
+        response.body = ""
+        next
       else
         raise ArgumentError, "Invalid scheduled email action"
       end
-    rescue ArgumentError, EmailConfigurationError => e
+    rescue ArgumentError, EmailConfigurationError, DailyAutomationError => e
       email_error = e.message
       response.status = 422
     rescue => e

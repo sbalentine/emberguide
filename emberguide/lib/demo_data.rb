@@ -57,7 +57,8 @@ module DemoData
         File.join(runtime_dir, "achievement_settings.json"),
       "EVENT_JOURNAL_FILE" => File.join(runtime_dir, "event_journal.json"),
       "BACKUP_SETTINGS_FILE" => File.join(runtime_dir, "backup_settings.json"),
-      "SPARK_HISTORY_FILE" => File.join(runtime_dir, "spark_history.json")
+      "SPARK_HISTORY_FILE" => File.join(runtime_dir, "spark_history.json"),
+      "DAILY_OVERVIEW_FILE" => File.join(runtime_dir, "daily_overview.json")
     }
   end
 

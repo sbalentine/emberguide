@@ -2,6 +2,7 @@ require_relative "test_helper"
 
 class EmailBackupsTest < Minitest::Test
   def setup
+    FileUtils.rm_f(DAILY_OVERVIEW_FILE)
     FileUtils.rm_f(SPARK_HISTORY_FILE)
     FileUtils.rm_f(BACKUP_SETTINGS_FILE)
     FileUtils.rm_f(MANUAL_COURSEWORK_FILE)
@@ -53,7 +54,8 @@ class EmailBackupsTest < Minitest::Test
       "backup_recipients" => ["backup@example.com"],
       "backup_daily_enabled" => true,
       "digest_recipients" => ["one@example.com", "two@example.com"],
-      "digest_daily_enabled" => true
+      "digest_daily_enabled" => true,
+      "digest_spark_overview" => true
     )
 
     save_scheduled_email_settings(settings)
@@ -77,6 +79,7 @@ class EmailBackupsTest < Minitest::Test
     assert settings["backup_daily_enabled"]
     assert_equal "2026-10-11", settings["last_backup_sent_on"]
     assert_empty settings["digest_recipients"]
+    refute settings["digest_spark_overview"]
   end
 
   def test_recipient_lists_accept_newlines_commas_and_remove_duplicates
@@ -96,7 +99,8 @@ class EmailBackupsTest < Minitest::Test
     save_scheduled_email_settings(
       scheduled_settings(
         "backup_recipients" => ["backup@example.com"],
-        "digest_recipients" => ["digest@example.com"]
+        "digest_recipients" => ["digest@example.com"],
+        "digest_spark_overview" => true
       )
     )
     save_school_calendar_settings(
@@ -141,6 +145,8 @@ class EmailBackupsTest < Minitest::Test
     )
     refute_includes archive, "test-token"
     refute entries.key?("options.json")
+    assert JSON.parse(entries["backup_settings.json"])["digest_spark_overview"]
+    refute entries.key?("daily_overview.json")
     assert_equal(
       "https://calendar.example.test/middle-school.ics",
       JSON.parse(entries["school_calendar_settings.json"])["feed_url"]
@@ -482,6 +488,20 @@ class EmailBackupsTest < Minitest::Test
     end
   end
 
+  def test_restore_discards_derived_overview_but_keeps_the_opt_in_preference
+    now = Time.local(2026, 10, 26, 5)
+    save_scheduled_email_settings(scheduled_settings("digest_spark_overview" => true))
+    with_replaced_method(self, :digest_spark_overview, ->(*) { { "bullets" => ["Check the Math notes."] } }) do
+      assert generate_daily_overview(now: now)
+    end
+    archive = build_backup_archive(now: now)
+    assert daily_overview_for_digest(now: now)["bullets"]
+    restore_backup_archive(archive)
+    refute File.exist?(DAILY_OVERVIEW_FILE)
+    assert load_scheduled_email_settings["digest_spark_overview"]
+    assert daily_overview_for_digest(now: now)["error"]
+  end
+
   def test_digest_contains_snapshot_missing_due_work_and_recent_grades
     now = Time.new(2026, 10, 11, 6, 0, 0, "-07:00")
     $dashboard_data["grades"] = [
@@ -658,6 +678,35 @@ class EmailBackupsTest < Minitest::Test
       "Content-ID: <emberguide-logo>"
     assert_includes delivery[:messages].first[:message],
       "Subject: Avery's EmberGuide Daily Digest"
+  end
+
+  def test_digest_delivery_uses_one_cached_overview_for_all_recipients_without_ai
+    configure_gmail
+    now = Time.local(2026, 10, 26, 6)
+    save_scheduled_email_settings(scheduled_settings("digest_spark_overview" => true))
+    with_replaced_method(self, :digest_spark_overview, ->(*) { { "bullets" => ["Check your Math notes."] } }) do
+      assert generate_daily_overview(now: now - 3600)
+    end
+    with_replaced_method(self, :ai_ask, ->(*) { flunk "Delivery invoked AI" }) do
+      delivery = lambda do |**options|
+        assert_equal 2, options[:messages].length
+        options[:messages].each do |message|
+          assert_includes message[:message], "Check your Math notes."
+          assert_includes message[:message], "TODAY AT A GLANCE"
+          assert_includes message[:message], "Today at a glance"
+        end
+      end
+      with_replaced_method(self, :deliver_email_messages, delivery) do
+        assert_equal 2, send_emberguide_digest(["one@example.com", "two@example.com"], now: now)
+      end
+      FileUtils.rm_f(DAILY_OVERVIEW_FILE)
+      with_replaced_method(self, :deliver_email_messages, ->(**options) {
+        assert_includes options[:messages].first[:message], "Today's Spark overview is not ready"
+        assert_includes options[:messages].first[:message], "CURRENT GRADES"
+      }) do
+        assert_equal 1, send_emberguide_digest(["one@example.com"], now: now)
+      end
+    end
   end
 
   def test_backup_and_digest_run_once_at_their_scheduled_hours

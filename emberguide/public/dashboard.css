@@ -2978,6 +2978,7 @@ button.calendar-month-day[aria-expanded="true"] {
 .backup-daily-field input {
   width: 19px;
   height: 19px;
+  flex-shrink: 0;
   margin-top: 1px;
 }
 

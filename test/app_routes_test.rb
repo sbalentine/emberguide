@@ -120,6 +120,7 @@ class AppRoutesTest < Minitest::Test
   end
 
   def setup
+    FileUtils.rm_f(DAILY_OVERVIEW_FILE)
     FileUtils.rm_f(SPARK_HISTORY_FILE)
     FileUtils.rm_f(COURSE_NAME_MAPPINGS_FILE)
     FileUtils.rm_f(GRADE_OVERRIDES_FILE)
@@ -1000,10 +1001,54 @@ class AppRoutesTest < Minitest::Test
         "last_backup_sent_on" => nil,
         "digest_recipients" => ["one@example.com", "two@example.com"],
         "digest_daily_enabled" => true,
+        "digest_spark_overview" => false,
         "last_digest_sent_on" => nil
       },
       load_scheduled_email_settings
     )
+  end
+
+  def test_overview_generation_and_preview_use_the_daily_cache_without_sending_email
+    app = TOPLEVEL_BINDING.eval("self")
+    calls = 0
+    with_replaced_method(app, :digest_spark_overview, ->(*) { calls += 1; { "bullets" => ["Check today's Math notes."] } }) do
+      with_replaced_method(app, :deliver_email_messages, ->(*) { flunk "Generation sent email" }) do
+        response = request("/settings/emails", Net::HTTP::Post,
+          "action" => "generate_overview", "digest_spark_overview" => "true")
+        assert_equal "303", response.code
+        assert_equal "/settings/emails?generated=overview", URI(response["Location"]).request_uri
+      end
+    end
+    assert_equal 1, calls
+    assert load_scheduled_email_settings["digest_spark_overview"]
+    with_replaced_method(app, :ai_ask, ->(*) { flunk "Preview invoked AI" }) do
+      preview = request("/settings/emails/digest-preview")
+      assert_equal "200", preview.code
+      assert_includes preview.body, "Today at a glance"
+      assert_includes preview.body, "Check today&#39;s Math notes."
+      page = request("/settings/emails?generated=overview")
+      assert_includes page.body, "No email was sent"
+      assert_includes page.body, "Generate Overview Now"
+      assert_includes page.body, "Prepared"
+      response = request("/settings/emails", Net::HTTP::Post, "action" => "save")
+      assert_equal "303", response.code
+      refute load_scheduled_email_settings["digest_spark_overview"]
+      refute_includes request("/settings/emails/digest-preview").body, "Today at a glance"
+    end
+  end
+
+  def test_overview_generation_requires_opt_in_and_reports_failure_without_sending
+    response = request("/settings/emails", Net::HTTP::Post, "action" => "generate_overview")
+    assert_equal "422", response.code
+    assert_includes response.body, "Enable Include Spark overview"
+    app = TOPLEVEL_BINDING.eval("self")
+    with_replaced_method(app, :digest_spark_overview, ->(*) { { "error" => "offline" } }) do
+      response = request("/settings/emails", Net::HTTP::Post,
+        "action" => "generate_overview", "digest_spark_overview" => "true")
+      assert_equal "422", response.code
+      assert_includes response.body, "Overview not generated"
+      assert_includes request("/settings/emails/digest-preview").body, "normal saved school details"
+    end
   end
 
   def test_scheduled_email_route_reports_missing_gmail_configuration
