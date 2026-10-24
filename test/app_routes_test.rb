@@ -120,6 +120,7 @@ class AppRoutesTest < Minitest::Test
   end
 
   def setup
+    FileUtils.rm_f(SPARK_HISTORY_FILE)
     FileUtils.rm_f(COURSE_NAME_MAPPINGS_FILE)
     FileUtils.rm_f(GRADE_OVERRIDES_FILE)
     FileUtils.rm_f(MANUAL_COURSEWORK_FILE)
@@ -197,6 +198,20 @@ class AppRoutesTest < Minitest::Test
     page = request("/ask")
     assert_includes page.body, "What Spark can see"
     assert_includes page.body, "data-ask-form"
+    assert_match(%r{<h1>Spark</h1>\s*<span class="ask-status"[^>]*aria-label="Spark connection status"}, page.body)
+    assert_includes page.body, 'role="log" aria-label="Messages" tabindex="0"'
+    assert_match(%r{<div class="ask-log"[^>]*></div>}, page.body)
+    refute_includes page.body, "Try one of these, or type your own question."
+    assert_includes page.body, '<label class="module-sr-only" for="ask-suggestion-select">Suggested questions</label>'
+    assert_includes page.body, 'data-ask-suggestion-select'
+    suggestions = page.body.scan(/<button type="button" class="ask-suggestion">(.*?)<\/button>/).flatten
+    assert_equal 4, suggestions.length
+    suggestions.each do |suggestion|
+      assert_includes page.body, %(<option value="#{suggestion}">#{suggestion}</option>)
+    end
+    assert_match(/data-ask-web-toggle>\s*Search the web\s*<\/label>/, page.body)
+    refute_match(/\bExa\b/, page.body)
+    assert_match(%r{<details class="ask-web-details">\s*<summary>How web search works</summary>\s*<p>.*external web-search service.*cannot guarantee anonymity.*</p>\s*</details>}, page.body)
     status = JSON.parse(request("/api/ai/status").body)
     assert_equal [true, true], status.values_at("enabled", "online")
     refute status.key?("key_accepted")
@@ -256,7 +271,9 @@ class AppRoutesTest < Minitest::Test
     assert_includes page, "Spark first identifies the study material locally"
     refute_includes page, "data-ask-web-query"
     refute_includes page, "EXA_API_KEY"
-    assert_includes request("/settings/spark").body, "No API key or extra setup is required"
+    settings_page = request("/settings/spark").body
+    assert_includes settings_page, "No API key or extra setup is required"
+    refute_match(/\bExa\b/, settings_page)
     payload = {
       "messages" => [{ "role" => "user", "content" => "Help PRIVATE STUDENT study PRIVATE ASSIGNMENT" }],
       "web_search" => true, "web_query" => "Egypt geography"
@@ -297,11 +314,11 @@ class AppRoutesTest < Minitest::Test
       payload["web_search"] = true
     end
     count = fake.requests.length
-    with_replaced_method(TOPLEVEL_BINDING.eval("self"), :exa_search_response, ->(*) { raise WebSearchUnavailable, "Exa unavailable" }) do
+    with_replaced_method(TOPLEVEL_BINDING.eval("self"), :exa_search_response, ->(*) { raise WebSearchUnavailable, "Web search unavailable" }) do
       response = post_json("/ai/ask", payload, "Accept" => "application/x-ndjson")
       events = response.body.lines.map { |line| JSON.parse(line) }
       assert_equal %w[preparing_search searching error], events.map { |event| event["type"] }.uniq
-      assert_equal "Exa unavailable", events.last["error"]
+      assert_equal "Web search unavailable", events.last["error"]
       assert_equal count + 1, fake.requests.length, "Search failure must stop after local preparation, without a final answer"
       assert_equal "503", post_json("/ai/ask", payload).code
     end
@@ -315,6 +332,107 @@ class AppRoutesTest < Minitest::Test
   def post_stream(messages)
     response = post_json("/ai/ask", { "messages" => messages }, "Accept" => "application/x-ndjson")
     [response, response.body.to_s.lines.map { |line| JSON.parse(line) }]
+  end
+
+  def test_search_planning_format_errors_explain_the_failure_and_retry_once
+    fake = FakeLlamaServer.new(answer: "I can help with a writing outline.")
+    saved_url = ENV["LLM_URL"]
+    ENV["LLM_URL"] = fake.url
+    with_replaced_method(TOPLEVEL_BINDING.eval("self"), :exa_search_response, ->(*) { flunk "Malformed request reached web search" }) do
+      capture_io do
+        response = post_json("/ai/ask", { "question" => "Help with a play reflection", "web_search" => true }, "Accept" => "application/x-ndjson")
+        events = response.body.lines.map { |line| JSON.parse(line) }
+        assert_equal %w[conversation preparing_search retrying_search error], events.map { |event| event["type"] }
+        assert_equal "format", events[2]["reason"]
+        assert_includes events.last["error"], "not a privacy violation"
+        assert_equal 2, fake.requests.length
+        assert fake.requests.all? { |entry| entry["body"]["response_format"] == { "type" => "json_object" } }
+        saved = spark_conversation(events.first["conversation_id"])
+        assert_equal "failed", saved["turns"].first["status"]
+        assert_equal events.last["error"], saved["turns"].first["error"]
+      end
+    end
+  ensure
+    fake&.stop
+    ENV["LLM_URL"] = saved_url
+    $ai_default_model = nil
+  end
+
+  def test_saved_spark_conversations_resume_research_and_current_school_context
+    fake = FakeLlamaServer.new(answer: "Practice the Nile vocabulary [1].", search_query: "Nile vocabulary")
+    saved_url = ENV["LLM_URL"]
+    ENV["LLM_URL"] = fake.url
+    search = ->(*) { { "content" => [{ "type" => "text", "text" => "Title: Nile guide\nURL: https://example.com/nile\nHighlights:\nThe Nile supports farming." }] } }
+    with_replaced_method(TOPLEVEL_BINDING.eval("self"), :exa_search_response, search) do
+      first = JSON.parse(post_json("/ai/ask", "question" => "Define Nile vocabulary", "web_search" => true).body)
+      id = first.fetch("conversation_id")
+      assert_equal "School Study Priorities", first["title"]
+      title_request = fake.requests.last["body"]
+      assert_equal 80, title_request["max_tokens"]
+      assert_includes title_request.dig("messages", 0, "content"), "Summarize a Spark conversation"
+      original = JSON.parse(request("/api/ai/conversations/#{id}").body)
+      assert_equal "completed", original["turns"].first["status"]
+      assert_equal "Nile vocabulary", original["turns"].first["search"]["query"]
+      assert_includes original["turns"].first["search"]["sources"].first["text"], "The Nile supports farming."
+      assert_equal [id], JSON.parse(request("/api/ai/conversations").body)["conversations"].map { |entry| entry["id"] }
+
+      $dashboard_data["profile"]["short_name"] = "Avery Updated"
+      $dashboard_data["updated_at"] = "2026-10-25T12:00:00Z"
+      response = post_json("/ai/ask", { "question" => "Help me practice", "conversation_id" => id }, "Accept" => "application/x-ndjson")
+      events = response.body.lines.map { |line| JSON.parse(line) }
+      assert_equal "conversation", events.first["type"]
+      assert_equal id, events.first["conversation_id"]
+      assert_equal "done", events.last["type"]
+      saved = JSON.parse(request("/api/ai/conversations/#{id}").body)
+      assert_equal 2, saved["turns"].length
+      assert_equal 2, saved["contexts"].length
+      assert_equal original["contexts"], saved["contexts"].slice(*original["contexts"].keys)
+      sent = fake.requests.last["body"]["messages"]
+      assert_equal %w[system user assistant user], sent.map { |message| message["role"] }
+      assert_includes sent.first["content"], "for Avery"
+      assert_includes sent.first["content"], saved["contexts"].fetch(saved["turns"].last["context_id"])["text"]
+      assert_includes sent.first["content"], "previously saved web research for general explanations"
+      assert_includes sent.first["content"], "Previously saved web research"
+      assert_includes sent.first["content"], "The Nile supports farming."
+      assert_equal "Define Nile vocabulary", sent[1]["content"]
+      assert_equal "Help me practice", sent.last["content"]
+      renamed = post_json("/api/ai/conversations/#{id}", "title" => "Nile study")
+      assert_equal "Nile study", JSON.parse(renamed.body)["title"]
+      assert_equal "405", request("/api/ai/conversations", Net::HTTP::Delete).code
+      assert_equal "415", request("/api/ai/conversations/#{id}/delete", Net::HTTP::Post).code
+      deleted = post_json("/api/ai/conversations/#{id}/delete", {})
+      assert_equal "200", deleted.code
+      assert_equal "404", request("/api/ai/conversations/#{id}").code
+      assert_empty JSON.parse(request("/api/ai/conversations").body)["conversations"]
+    end
+  ensure
+    fake&.stop
+    ENV["LLM_URL"] = saved_url
+    $ai_default_model = nil
+  end
+
+  def test_saved_spark_failures_are_visible_and_can_be_retried
+    saved_url = ENV["LLM_URL"]
+    ENV["LLM_URL"] = "http://127.0.0.1:1"
+    response = post_json("/ai/ask", "question" => "Help with homework")
+    assert_equal "503", response.code
+    result = JSON.parse(response.body)
+    id = result.fetch("conversation_id")
+    saved = spark_conversation(id)
+    assert_equal "failed", saved["turns"].first["status"]
+    assert_match(/offline/, saved["turns"].first["error"])
+    response = post_json("/ai/ask", { "question" => "Try again", "conversation_id" => id }, "Accept" => "application/x-ndjson")
+    assert_equal "error", JSON.parse(response.body.lines.last)["type"]
+    assert_equal %w[failed failed], spark_conversation(id)["turns"].map { |turn| turn["status"] }
+    assert_equal "404", post_json("/ai/ask", "question" => "Hi", "conversation_id" => SecureRandom.uuid).code
+    assert_equal "422", post_json("/ai/ask", "question" => "").code
+    assert_equal "422", post_json("/api/ai/conversations/#{id}", "title" => "").code
+    _, pending = spark_begin_turn("Still running", $dashboard_data, conversation_id: id, web_search: false)
+    assert_equal "409", post_json("/ai/ask", "question" => "Again", "conversation_id" => id).code
+    spark_update_turn(id, pending["id"], status: "interrupted", error: "Test ended")
+  ensure
+    ENV["LLM_URL"] = saved_url
+    $ai_default_model = nil
   end
 
   def request(path, request_class = Net::HTTP::Get, fields = nil)

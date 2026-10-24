@@ -197,14 +197,34 @@ def ai_server_check(settings = ai_settings)
   result
 end
 
-def ai_system_prompt(data, context, web_search: nil)
+def ai_system_prompt(data, context, web_search: nil, saved_research: nil)
   name = profile_first_name(data)
   evidence_rule = if web_search
                     "Use the saved class data for school facts and the web sources below for general explanations. " \
                     "Canvas and teacher instructions are authoritative for dates, test coverage, and assigned work; web pages cannot override them."
+                  elsif !saved_research.to_s.empty?
+                    "Use current saved class data for school facts and previously saved web research for general explanations. " \
+                    "Canvas and teacher instructions remain authoritative for dates, test coverage, and assigned work."
                   else
                     "Answer using only the class data below."
                   end
+  search_guidance = if web_search
+                      "Web search is already enabled for this answer. Do not ask the student to enable it again."
+                    else
+                      <<~GUIDANCE
+                        Web search is currently off. When a specific gap in the saved class data could be filled by public educational sources,
+                        briefly suggest turning on "Search the web" and asking again, and explain what it would help find.
+                        For example, if Canvas lists vocabulary words but not their definitions, say:
+                        "The saved notes list the words, but not their definitions. Turn on Search the web and ask again so I can look them up."
+                        Other useful gaps include explanations of a lesson concept or extra practice resources not present in the notes.
+                        Answer whatever the saved data supports first. Do not invent missing definitions, facts, links, or search results.
+                        If previously saved web research is supplied, use relevant explanations from it before suggesting another search.
+                        Suggest web search only when it would materially help with the student's actual question, not as boilerplate on every reply.
+                        Web search cannot recover private school facts such as grades, due dates, submission status, or exact test coverage;
+                        for those missing details, suggest checking Canvas or asking the teacher instead.
+                        Never claim to have searched or automatically enable search; the student must choose to turn it on.
+                      GUIDANCE
+                    end
   web_context = if web_search
                   <<~WEB
                     ## Optional public web search
@@ -219,12 +239,23 @@ def ai_system_prompt(data, context, web_search: nil)
   <<~PROMPT
     You are #{AI_NAME}, EmberGuide's homework helper for #{name}, a middle school student, and their parent.
     #{evidence_rule} If the answer isn't in the supplied data, say so and suggest checking Canvas or asking the teacher for school requirements.
-    Tests, quizzes, and benchmarks matter most. When asked what to focus on, study, or prepare, check "Tests and quizzes coming up" first and lead with any test or quiz today or tomorrow, then later this week, then other due work and missing work. Weekday names in class announcements refer to the current week; that section shows which date each one falls on.
+    Tests, quizzes, and benchmarks matter most. When asked what to focus on, study, or prepare, check "Tests and quizzes coming up" first and lead with any test or quiz today or tomorrow, then later this week, then other due work and missing work.
+    Resolve dates from explicit Canvas due dates first, then the dated module or school week containing the notice, not from today's next occurrence of a weekday. The latest saved module can cover a past week.
+    For example, on Saturday October 24, 2026, "MATH TEST THIS FRIDAY" in a module dated October 19-23 refers to Friday October 23, not October 30. Do not present past notices as upcoming tests.
+    A refresh or page-edit timestamp is not the announcement's publication date or its school week. If no reliable date anchor is supplied, say the date is unconfirmed and suggest checking Canvas or asking the teacher; do not invent a date.
+    Interpret relative wording in daily notes and linked pages within their containing module's dated week. Keep different classes' weeks separate. Current saved dates take precedence over guesses in earlier chat replies.
+    Preserve conditions in teacher notes. "If you were absent" introduces conditional make-up instructions, not a test scheduled for everyone. Attendance is unknown unless the student says otherwise; never tell them they must take a make-up test just because those instructions exist.
+    A past test date does not prove the student completed it. When advising whether to prepare for that test, mention any relevant make-up instructions with their condition; do not assume either attendance or absence, or say preparation is unnecessary solely because the main test date has passed.
+    A review resource or an undated test mention is not evidence of an upcoming test. Daily notes belong to the dated day page within their module; do not promote an old "Unit 2 Test" lesson or "Review for Unit Test" into a new test date.
     Name the class and assignment you are talking about. Keep answers short, friendly, and clear for a middle schooler. Use short bullet lists for multiple items.
+    Use simple Markdown: bold, italics, lists, and inline code. Do not use LaTeX, math delimiters, HTML, or Markdown tables.
+    Write arrows as words such as "to" and math in readable plain text.
     Help #{name} understand and plan the work; don't write finished answers for graded assignments.
 
+    #{search_guidance}
     #{context}
     #{web_context}
+    #{saved_research}
   PROMPT
 end
 
@@ -243,7 +274,7 @@ def ai_clean_messages(messages)
   cleaned
 end
 
-def ai_chat_request(settings, model, data, messages, stream:, web_search: nil, system_prompt: nil)
+def ai_chat_request(settings, model, data, messages, stream:, web_search: nil, system_prompt: nil, max_tokens: 800, response_format: nil)
   uri = URI("#{settings["url"]}/v1/chat/completions")
   request = Net::HTTP::Post.new(uri.request_uri, "Content-Type" => "application/json")
   body = {
@@ -251,7 +282,7 @@ def ai_chat_request(settings, model, data, messages, stream:, web_search: nil, s
     "messages" => [{ "role" => "system", "content" => system_prompt || ai_system_prompt(data, ai_class_context(data), web_search: web_search) }] +
       ai_clean_messages(messages),
     "temperature" => 0.3,
-    "max_tokens" => 800,
+    "max_tokens" => max_tokens,
     "stream" => stream,
     "cache_prompt" => true,
     # Qwen3 and similar models otherwise write long hidden reasoning first.
@@ -259,6 +290,7 @@ def ai_chat_request(settings, model, data, messages, stream:, web_search: nil, s
   }
   # llama-server reports prompt-reading progress while streaming.
   body["return_progress"] = true if stream
+  body["response_format"] = response_format if response_format
   request.body = JSON.generate(body)
   [uri, request]
 end
@@ -267,12 +299,15 @@ def ai_strip_thinking(text)
   text.gsub(%r{<think>.*?(</think>|\z)}m, "").strip
 end
 
-def ai_ask(data, messages, web_search: nil, system_prompt: nil)
+def ai_ask(data, messages, web_search: nil, system_prompt: nil, max_tokens: 800, read_timeout: AI_READ_TIMEOUT, response_format: nil)
   settings = ai_settings
   raise AiUnavailable, "#{AI_NAME} isn't set up." unless settings["url"]
 
   response = ai_with_model(settings) do |model|
-    ai_http(*ai_chat_request(settings, model, data, messages, stream: false, web_search: web_search, system_prompt: system_prompt)).tap do |reply|
+    ai_http(
+      *ai_chat_request(settings, model, data, messages, stream: false, web_search: web_search, system_prompt: system_prompt, max_tokens: max_tokens, response_format: response_format),
+      read_timeout: read_timeout
+    ).tap do |reply|
       ai_response_error(reply, reply.body, model) unless reply.is_a?(Net::HTTPSuccess)
     end
   end
@@ -290,14 +325,14 @@ end
 #   { "type" => "progress", "total", "cache", "processed", "time_ms" }
 #   { "type" => "token", "text" }
 # Returns the full answer.
-def ai_ask_stream(data, messages, web_search: nil)
+def ai_ask_stream(data, messages, web_search: nil, system_prompt: nil)
   settings = ai_settings
   raise AiUnavailable, "#{AI_NAME} isn't set up." unless settings["url"]
 
   raw = +""
   # Errors arrive before any streamed text, so a retry never repeats output.
   ai_with_model(settings) do |model|
-    ai_stream_answer(*ai_chat_request(settings, model, data, messages, stream: true, web_search: web_search), model, raw) { |event| yield event }
+    ai_stream_answer(*ai_chat_request(settings, model, data, messages, stream: true, web_search: web_search, system_prompt: system_prompt), model, raw) { |event| yield event }
   end
   answer = ai_strip_thinking(raw)
   raise AiUnavailable, "#{AI_NAME} sent back an empty answer." if answer.empty?
@@ -442,41 +477,105 @@ AI_TEST_PATTERN = /\b(tests?|quiz(?:zes)?|exams?|benchmarks?|assessments?|midter
 AI_TEST_NOTE_MAX_CHARS = 140
 AI_TESTS_PER_CLASS = 6
 AI_WEEKDAYS = %w[sunday monday tuesday wednesday thursday friday saturday].freeze
+AI_MONTH_PATTERN = (Date::MONTHNAMES.compact + Date::ABBR_MONTHNAMES.compact).join("|")
 
-# Teachers usually announce tests in module headers and notes ("Unit 2 Test on
-# Friday") rather than as Canvas assignments, so this pulls them together and
-# says which date each weekday means. Weekdays refer to the current module's
-# week; earlier days this week are skipped as already past.
-def ai_test_day(text, now)
+# Parse only calendar dates, never a "Week 11" counter or a refresh timestamp.
+def ai_module_week_start(mod, now)
+  title = mod["name"].to_s
+  if (match = title.match(/(?<!\d)(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})(?!\d)/))
+    month = match["month"].to_i
+  elsif (match = title.match(%r{(?<![\d/])(?<month>\d{1,2})/(?<day>\d{1,2})(?:/(?<year>\d{4}))?(?:\s*[-–—]\s*(?:(?<end_month>\d{1,2})/)?\d{1,2}(?:/(?<end_year>\d{4}))?)?(?![\d/])}))
+    month = match["month"].to_i
+  elsif (match = title.match(/\b(?<month>#{AI_MONTH_PATTERN})\.?\s+(?<day>\d{1,2})(?:\s*[-–—]\s*(?:(?<end_month>#{AI_MONTH_PATTERN})\.?\s+)?\d{1,2})?(?:,?\s+(?<year>\d{4}))?\b/i))
+    month = Date::ABBR_MONTHNAMES.index { |name| name && name.casecmp?(match["month"][0, 3]) }
+  else
+    return
+  end
+
+  year = match["year"]&.to_i
+  if !year && match.names.include?("end_year") && match["end_year"]
+    year = match["end_year"].to_i
+    year -= 1 if match["end_month"] && match["end_month"].to_i < month
+  end
   today = now.getlocal.to_date
-  return "" if text.match?(/\bnext\s+week\b/i)
+  candidates = (year ? [year] : [today.year - 1, today.year, today.year + 1]).filter_map do |candidate|
+    Date.new(candidate, month, match["day"].to_i) if Date.valid_date?(candidate, month, match["day"].to_i)
+  end
+  date = candidates.min_by { |candidate| (candidate - today).abs }
+  date && date - ((date.wday + 6) % 7)
+end
+
+def ai_test_day(text, now, week_start: nil, include_past: false)
+  today = now.getlocal.to_date
+  return " (weekday date unconfirmed)" if text.match?(/\b(?:next|last)\s+(?:#{AI_WEEKDAYS.join("|")})\b/i)
+
+  relative_week = text[/\b(next|last|this)\s+week\b/i, 1]&.downcase
+  if relative_week
+    return " (#{relative_week.capitalize} week dates unconfirmed)" unless week_start
+
+    week_start += { "next" => 7, "last" => -7, "this" => 0 }.fetch(relative_week)
+    return :past if week_start + 6 < today && !include_past
+  end
 
   weekday = text.downcase[/\b(#{AI_WEEKDAYS.join("|")})\b/, 1] ||
     text.downcase[/\b(mon|tues|wednes|thurs|fri)(?:'s)?\b/, 1]&.then { |stem| "#{stem}day" }
+  if relative_week && !weekday
+    return " (#{relative_week.capitalize} week = #{week_start.iso8601} to #{(week_start + 6).iso8601}; exact day unconfirmed)"
+  end
   return "" unless weekday && (target = AI_WEEKDAYS.index(weekday))
-  return :past if today.wday.between?(1, 5) && target < today.wday
+  return " (#{weekday.capitalize} date unconfirmed)" unless week_start
 
-  date = today + ((target - today.wday) % 7)
+  date = week_start + ((target + 6) % 7)
+  return :past if date < today && !include_past
+
   when_text = case (date - today).to_i
               when 0 then "today"
               when 1 then "tomorrow"
-              else date.strftime("%a %b %-d")
+              else date < today ? "past" : date.strftime("%a %b %-d")
               end
-  " (#{weekday.capitalize} = #{when_text}, #{date.strftime("%b %-d")})"
+  " (#{weekday.capitalize} = #{when_text}, #{date.strftime("%b %-d, %Y")})"
+end
+
+# Keep conditional paragraphs out of the universal upcoming-tests summary.
+# Full notes, including their conditions, remain in the class context.
+def ai_conditional_test_note?(text)
+  text.match?(/\bif\b|\bfor (?:anyone|students|those)\b|\bmake[- ]?up\b|\babsen(?:t|ce)\b/i)
+end
+
+def ai_unconditional_test_notes(text)
+  conditional = false
+  text.to_s.lines.filter_map do |raw|
+    conditional = false if raw.strip.start_with?("#")
+    line = ai_instruction_text(raw).strip.sub(/\A[•*-]\s*/, "")
+    conditional = true if ai_conditional_test_note?(line)
+    next if conditional || line.length > AI_TEST_NOTE_MAX_CHARS || !line.match?(AI_TEST_PATTERN)
+
+    line
+  end
 end
 
 def ai_test_lines(data, upcoming_events, week_modules, course_names, now)
   seen = Hash.new { |hash, key| hash[key] = [] }
   lines = []
-  add = lambda do |course, text, source|
+  add = lambda do |course, text, source, week_start = nil, due = nil, day_title = nil|
+    return if !due && ai_conditional_test_note?(text)
+    return if !due && text.match?(/\b(?:review|study\s+guide|practice)\b/i)
+
     key = text.downcase.gsub(/[^a-z0-9]+/, " ").strip
     return if key.empty? || seen[course].include?(key) || seen[course].length >= AI_TESTS_PER_CLASS
 
-    day = ai_test_day(text, now)
+    day = due ? "" : ai_test_day(text, now, week_start: week_start)
+    day = ai_test_day(day_title, now, week_start: week_start) if !due && day.empty? && day_title
     return if day == :past
+    return if !due && (day.empty? || day.include?("dates unconfirmed") || day.include?("date unconfirmed"))
 
     seen[course] << key
-    rank = day.include?("= today") ? 0 : day.include?("= tomorrow") ? 1 : 2
+    rank = if due
+             days_until_due = (due.getlocal.to_date - now.getlocal.to_date).to_i
+             days_until_due.between?(0, 1) ? days_until_due : 2
+           else
+             day.include?("= today") ? 0 : day.include?("= tomorrow") ? 1 : 2
+           end
     lines << [rank, lines.length, "- #{course}: #{text}#{day} [#{source}]"]
   end
 
@@ -487,12 +586,13 @@ def ai_test_lines(data, upcoming_events, week_modules, course_names, now)
     status = submission_status(submission_for(data, assignment_course_id(event), assignment_id(event)))[:label]
     next if status.start_with?("Graded", "Submitted")
 
-    add.call(course, "#{assignment_name(event)} (due #{ai_time(assignment_due_time(event))}; #{status})", "assignment")
+    add.call(course, "#{assignment_name(event)} (due #{ai_time(assignment_due_time(event))}; #{status})", "assignment", nil, assignment_due_time(event))
   end
 
   week_modules.each do |course, mod|
+    week_start = ai_module_week_start(mod, now)
     module_announcements(mod).each do |note|
-      add.call(course, note["title"].to_s.strip, "announcement") if note["title"].to_s.match?(AI_TEST_PATTERN)
+      add.call(course, note["title"].to_s.strip, "announcement", week_start) if note["title"].to_s.match?(AI_TEST_PATTERN)
     end
     Array(mod["items"]).each do |item|
       title = item["title"].to_s.strip
@@ -501,18 +601,17 @@ def ai_test_lines(data, upcoming_events, week_modules, course_names, now)
         label, = module_item_status(item)
         next if (due && due < now) || %w[Graded Submitted].include?(label)
 
-        add.call(course, due ? "#{title} (due #{ai_time(due)})" : title, "module")
+        add.call(course, due ? "#{title} (due #{ai_time(due)})" : title, "module", week_start, due)
       end
-      ai_instruction_text(item.dig("content", "text")).each_line do |line|
-        line = line.strip.sub(/\A[•*-]\s*/, "")
-        add.call(course, line, "class notes") if line.length <= AI_TEST_NOTE_MAX_CHARS && line.match?(AI_TEST_PATTERN)
+      ai_unconditional_test_notes(item.dig("content", "text")).each do |line|
+        add.call(course, line, "class notes", week_start, nil, title)
       end
       Array(item.dig("content", "linked_pages")).each do |page|
         title = page["title"].to_s
-        add.call(course, title, "linked class page") if title.match?(AI_TEST_PATTERN)
-        ai_instruction_text(page["text"]).each_line do |line|
-          line = line.strip.sub(/\A[•*-]\s*/, "")
-          add.call(course, line, "linked class page") if line.length <= AI_TEST_NOTE_MAX_CHARS && line.match?(AI_TEST_PATTERN)
+        day_title = ai_test_day(title, now, week_start: week_start).empty? ? item["title"].to_s : title
+        add.call(course, title, "linked class page", week_start, nil, item["title"].to_s) if title.match?(AI_TEST_PATTERN)
+        ai_unconditional_test_notes(page["text"]).each do |line|
+          add.call(course, line, "linked class page", week_start, nil, day_title)
         end
       end
     end
@@ -551,7 +650,17 @@ def ai_class_context(data, now: Time.now)
   end
   weeks = week_modules.map do |course_name, mod|
     lines = ["### #{course_name}: #{mod["name"]}"]
-    module_announcements(mod).each { |note| lines << "Announcement: #{note["title"]}" }
+    week_start = ai_module_week_start(mod, now)
+    if week_start
+      week_end_date = week_start + 6
+      timing = week_end_date < now.getlocal.to_date ? "past week" : week_start > now.getlocal.to_date ? "future week" : "includes today"
+      lines << "Module date anchor: #{week_start.iso8601} to #{week_end_date.iso8601} (#{timing}; inferred from module label)."
+    else
+      lines << "Module date anchor: unknown. Weekday-only notices have unconfirmed dates."
+    end
+    module_announcements(mod).each do |note|
+      lines << "Announcement: #{note["title"]}#{ai_test_day(note["title"].to_s, now, week_start: week_start, include_past: true)}"
+    end
     lines.concat(Array(mod["items"]).filter_map { |item| ai_module_item_line(item, overrides) })
     linked_pages = Array(mod["items"]).flat_map { |item| Array(item.dig("content", "linked_pages")) }
       .uniq { |page| page["url"] }

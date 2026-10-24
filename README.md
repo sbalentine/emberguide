@@ -164,13 +164,74 @@ page), and recent scores. Linked pages are also checked for test and quiz
 mentions. Instructions are never shortened, and
 an assignment already described under This Week in Class isn't repeated. Nothing
 is fetched from Canvas at question time, and the Canvas token is never sent.
-**What Spark can see** on the Spark page shows exactly what goes to the model
-and about how many tokens it uses. Because the full instructions are included,
+**What Spark can see** on the Spark page previews the current saved school context
+and about how many tokens it uses. Prompts also include recent chat turns and,
+when available, previously saved web research. Because the full instructions are included,
 pick a model with a large context window; in Automatic mode Spark tries another
 installed model if the class notes don't fit.
 
-For public study resources, turn on **Search the web with Exa** before asking a
-question. Spark first reads the local class context and conversation to identify
+On phones, a **Suggested questions** dropdown replaces the suggestion buttons.
+Choosing a question sends it to Spark, just like clicking a suggestion on desktop.
+The conversation area stays hidden until the first question and hides again
+when starting a new conversation.
+Replies scroll inside the conversation instead of pushing the question box down.
+Spark uses simple Markdown for readable replies; common LaTeX arrow shortcuts
+are displayed as arrows, but full LaTeX math rendering is not supported.
+Scroll up in the conversation to reread earlier messages without being pulled
+back to the latest text as Spark answers.
+When web search is off, Spark can suggest turning on **Search the web** if
+public sources would fill a specific gap, such as vocabulary definitions missing
+from the saved class notes or extra practice for a lesson. It explains what
+search could help find but never enables it automatically. Missing school-specific
+facts, such as due dates or grades, still need Canvas or the teacher.
+
+#### Saved conversations
+
+Spark saves conversations on the EmberGuide server, so questions and answers
+survive page refreshes and app restarts and can be opened from another device.
+Expand **Previous Conversations** to open, rename, or delete one conversation.
+After the first successful reply, the local AI summarizes the subject in a short
+title instead of repeating the question. A manually renamed title is never
+overwritten. If subject generation fails, the reply remains saved and a notice
+offers manual renaming. There is no
+bulk-delete control or automatic history expiration. **New conversation** starts
+a separate thread without deleting the previous one. A conversation's URL keeps
+that thread selected on refresh; opening Spark without a selection resumes the
+most recently updated conversation.
+
+Each answer keeps a timestamped snapshot of the school context used to generate
+it. Identical snapshots within a conversation share one stored copy. Web-enabled
+turns also retain the generated search query, source titles, links, and bounded
+source excerpts. Expand **School context saved** below an answer to inspect its
+original school context. New answers use the latest saved school data, not the
+old snapshot. Relevant research from up to three recent successful searches can
+be reused without running another search. Source excerpts remain untrusted
+reference material and cannot override current Canvas instructions.
+
+Full answers remain available in Previous Conversations even though model requests still use
+only the latest twelve chat messages, with the existing per-message size limit.
+Failed or interrupted answers are marked explicitly; incomplete answers are not
+replayed as successful assistant messages. Refresh conversations to check a reply
+started on another device. Restarts mark unfinished replies as interrupted.
+
+History is stored in `spark_history.json` under `/data` in the Home Assistant
+add-on or `emberguide/tmp` locally; `SPARK_HISTORY_FILE` can override that path.
+Configured credentials are redacted from saved content. Conversations and their
+research/context snapshots are included in downloaded and emailed backups.
+Deleting a conversation does not remove copies from existing backups, and
+restoring one of those backups can bring it back. Older backups remain supported
+and do not erase existing Spark history when no history file is present.
+The existing backup limits still apply: 10 MB per file and 25 MB overall.
+Oversized backups fail explicitly instead of producing an archive that cannot
+be restored; history is never silently trimmed to make it fit.
+
+EmberGuide has no login: anyone who can access the app can read, rename, or
+delete its saved conversations. Backups therefore contain private student chat
+and school context and should be stored and emailed only where appropriate.
+
+For public study resources, turn on **Search the web** before asking a
+question. Expand **How web search works** below the checkbox for service and
+privacy details. Spark first reads the local class context and conversation to identify
 the actual lesson or vocabulary list and the explanation you want. It generates
 a focused public search request automatically, such as definitions for the
 vocabulary words in the teacher's study guide. Only that generated request and
@@ -179,14 +240,17 @@ a fixed educational objective go to
 The original question, full local answer, grades, class notes, and chat history
 are not attached to Exa requests. Spark then combines the web sources with its
 local context to answer the original question.
-Known student and mapped teacher names, credentials, and common private-data
-patterns are blocked before searching. Public educational wording such as
-"6th grade vocabulary", "student study guide", and "percent practice" is allowed;
-personal marks and submission
-records are still blocked. These checks are not a guarantee of
-anonymity: the model is generating text from private context. Leave web search
-off for sensitive questions. If Spark cannot identify the study topic or prepare
-a permitted handoff, it reports an error without sending a search.
+The local handoff prompt removes identifying details and turns personal grades,
+missing work, or scheduling concerns into public study topics or planning advice.
+Known student and mapped teacher names are automatically removed from the
+generated query before a final name-only privacy check. Exact configured
+credentials are also stripped as a safety backstop. Percentages, fractions,
+dates, and phrases about grades or missing assignments no longer trigger broad
+privacy blocks. These steps are not a guarantee of anonymity: the model is
+generating text from private context, and unknown names or other identifying
+details might remain. Leave web search off for sensitive questions. If Spark
+cannot identify a study topic or produce a readable search request, it reports
+an error without sending a search.
 No Exa API key, extra service, or tool-calling model is needed. Keyless access
 has free service limits and requires internet access.
 
@@ -194,10 +258,21 @@ The toggle starts off and resets when starting a new conversation. Each
 web-enabled question runs one search, using at most four sources with bounded
 excerpts. Spark shows **Finding study material locally...**, then
 **Searching the web...**, then streams its answer with
-numbered citations and clickable **Web sources**. Source text is untrusted
+numbered citations and clickable **Web sources**. The generated query is labeled
+**Spark searched the web for:**, with provider-neutral wording throughout the app.
+Source text is untrusted
 reference material, not instructions; teacher notes remain authoritative for
 due dates and assigned work. Search failures and free-limit errors are shown
 explicitly instead of silently answering without the requested sources.
+Search preparation requests JSON output from the local model. If its handoff is
+malformed, too long, still contains a known name, or lacks a study topic, Spark
+tries once more locally before making any external search. The progress label
+explains what it is fixing. If preparation still fails, the message distinguishes
+a Spark formatting problem from missing topic details or a name-removal issue
+and gives an appropriate next step, rather than calling every failure a privacy
+violation. Requests for a completed assignment are translated into searches for
+writing guidance or relevant concepts; Spark still helps the student write their
+own response rather than producing finished graded work.
 Turning web search off prevents new searches; prior answers remain in the
 current conversation. **What Spark can see** previews saved school context,
 not the additional per-question search results. The generated query appears
@@ -209,8 +284,23 @@ module headers and daily notes ("‼️ Unit 2 Test on Friday ‼️") rather th
 Canvas assignments, so Spark collects those mentions into a **Tests and
 quizzes coming up** list. The list states which date each weekday falls on
 ("Friday = tomorrow"), puts tests today or tomorrow at the top, and skips
-earlier days this week. Spark is told to lead with these when asked what to
-focus on or study.
+past dates. Weekday notices are anchored to their own module's dated week,
+including labels such as `October 19-23` and `10/19-10/23`, rather than rolled
+forward to the next occurrence of that weekday. On Saturday October 24, a
+Friday notice in the October 19-23 module means October 23, not October 30.
+Explicit Canvas due dates take precedence. A module without a readable date
+label leaves weekday dates unconfirmed; refresh and page-edit timestamps do
+not establish an announcement date. The saved context retains past notices
+with their module date anchors, and Spark is instructed not to treat them as
+upcoming or repeat earlier chat guesses. Spark is told to lead with confirmed
+upcoming tests when asked what to focus on or study.
+Test mentions in daily notes inherit that day within the dated module.
+Review resources alone do not establish an upcoming test. Conditional sections
+such as "If you were absent" are excluded from the universal upcoming-tests
+summary, while the full instructions and their conditions remain available to
+Spark. The assistant must not assume the student was absent or needs a make-up
+test. Relative phrases such as "next week" use the source module's week and
+do not imply an exact test day.
 
 While Spark works, the answer bubble shows a progress bar with a time estimate
 while it reads the class notes ("Reading your class notes… 65% · about 3s
@@ -321,7 +411,8 @@ calendar data rather than presenting it as an exact attendance record.
 Preview, send on demand, or schedule a responsive morning digest containing the
 current grade snapshot, missing work, near-term assignments, schedule changes,
 and recently posted grades. Download or email a checksum-verified ZIP backup of
-cached and locally managed data without including Canvas or Gmail credentials.
+cached and locally managed data, including Spark conversations, web research,
+and saved school context, without including configured Canvas or Gmail credentials.
 
 ### 🏠 Designed for an always-on family dashboard
 
@@ -369,7 +460,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.7.1"
+version: "1.8.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -664,8 +755,9 @@ on your own network, and set an `--api-key` on llama-server.
 Optional Spark web search automatically generates a focused public request
 locally from the study material and user's intent. Only that request and a fixed
 educational objective go to Exa's hosted MCP endpoint. Raw Canvas data and chat
-history are not attached. Name and private-data checks reduce disclosure risk
-but cannot guarantee anonymity; leave the toggle off for sensitive questions.
+history are not attached. Local anonymization, automatic removal of known
+student/teacher names and configured credentials, and a final name check reduce
+disclosure risk but cannot guarantee anonymity; leave the toggle off for sensitive questions.
 Search results return to the configured Spark model for the final answer.
 
 The repository's `.gitignore` excludes common secret and runtime files, but always review changes before pushing:

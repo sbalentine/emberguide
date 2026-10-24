@@ -94,8 +94,8 @@
 
     <section class="card calendar-settings-card">
       <h2>Optional web search</h2>
-      <p class="settings-intro">Enable <strong>Search the web with Exa</strong> when asking Spark. Spark uses local class data to identify the study topic or vocabulary list, automatically searches Exa, then combines the sources into its answer. Raw grades, Canvas notes, and chat history are not attached to Exa requests. Checks block known names and common private-data patterns, but cannot guarantee anonymity. The generated search appears with the sources.</p>
-      <p class="settings-intro">Spark uses <a href="https://exa.ai/docs/get-started/exa-mcp" target="_blank" rel="noopener noreferrer">Exa's hosted MCP service</a>. No API key or extra setup is required. Free service limits apply; Spark reports a search error if Exa is unavailable or its limit is reached.</p>
+      <p class="settings-intro">Enable <strong>Search the web</strong> when asking Spark. Spark uses local class data to identify the study topic or vocabulary list, removes known student and teacher names and configured credentials, then sends the generated request to an external web-search service. Raw grades, Canvas notes, and chat history are not attached. These steps cannot guarantee anonymity, especially for names Spark doesn't know. The generated search appears with the sources under <strong>Spark searched the web for:</strong></p>
+      <p class="settings-intro">No API key or extra setup is required. Free service limits apply; Spark reports a search error if the web-search service is unavailable or its limit is reached.</p>
     </section>
 
     <section class="card calendar-settings-card">

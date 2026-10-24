@@ -33,10 +33,11 @@ require_relative "lib/home_assistant_events"
 require_relative "lib/dashboard_data"
 require_relative "lib/course_modules"
 require_relative "lib/assignment_details"
-require_relative "lib/email_backups"
 require_relative "lib/school_calendar"
 require_relative "lib/ai_assistant"
 require_relative "lib/web_search"
+require_relative "lib/spark_history"
+require_relative "lib/email_backups"
 
 # ============================================================
 # Startup
@@ -54,6 +55,7 @@ if $PROGRAM_NAME == __FILE__
 
   puts "Starting EmberGuide#{mode}..."
 
+  spark_interrupt_pending_turns
   initialize_dashboard_data
   initialize_event_journal
   current_dashboard_data = dashboard_data
@@ -225,6 +227,49 @@ rescue StandardError => e
   response.body = "Unable to load Spark."
 end
 
+server.mount_proc "/api/ai/conversations" do |request, response|
+  response["Content-Type"] = "application/json; charset=utf-8"
+  response["Cache-Control"] = "no-store"
+  path = request.path.delete_prefix("/api/ai/conversations")
+  if request.request_method == "GET" && path.empty?
+    response.body = JSON.generate("conversations" => spark_conversation_list)
+  elsif request.request_method == "GET" && path.match?(%r{\A/[0-9a-f-]+\z})
+    response.body = JSON.generate(spark_conversation(path.delete_prefix("/")))
+  elsif request.request_method == "POST" && path.match?(%r{\A/[0-9a-f-]+(?:/delete)?\z})
+    unless request.content_type.to_s.start_with?("application/json")
+      response.status = 415
+      response.body = JSON.generate("error" => "Send conversation changes as JSON.")
+      next
+    end
+    payload = JSON.parse(request.body.to_s)
+    raise ArgumentError, "Send conversation changes as a JSON object." unless payload.is_a?(Hash)
+
+    id = path.delete_prefix("/").delete_suffix("/delete")
+    if path.end_with?("/delete")
+      spark_delete_conversation(id)
+      response.body = JSON.generate("deleted" => id)
+    else
+      response.body = JSON.generate(spark_rename_conversation(id, payload["title"]))
+    end
+  else
+    response.status = 405
+    response.body = JSON.generate("error" => "Use GET for history, or change one conversation at a time.")
+  end
+rescue SparkConversationNotFound => e
+  response.status = 404
+  response.body = JSON.generate("error" => e.message)
+rescue SparkConversationBusy => e
+  response.status = 409
+  response.body = JSON.generate("error" => e.message)
+rescue JSON::ParserError, ArgumentError => e
+  response.status = 422
+  response.body = JSON.generate("error" => e.is_a?(ArgumentError) ? e.message : "That conversation change couldn't be read.")
+rescue SparkHistoryError => e
+  puts "Spark history error: #{e.class}: #{e.message}"
+  response.status = 500
+  response.body = JSON.generate("error" => e.message)
+end
+
 server.mount_proc "/ai/ask" do |request, response|
   response["Content-Type"] = "application/json; charset=utf-8"
   response["Cache-Control"] = "no-store"
@@ -244,10 +289,33 @@ server.mount_proc "/ai/ask" do |request, response|
 
   begin
     payload = JSON.parse(request.body.to_s)
-    messages = payload.is_a?(Hash) ? payload["messages"] : nil
-    ai_clean_messages(messages)
     use_web = ai_web_requested?(payload)
     data = dashboard_data_with_manual || {}
+    conversation = nil
+    turn = nil
+    if payload.is_a?(Hash) && payload.key?("question")
+      conversation, turn = spark_begin_turn(payload["question"], data, web_search: use_web, conversation_id: payload["conversation_id"])
+      messages = spark_conversation_messages(conversation)
+    else
+      messages = payload.is_a?(Hash) ? payload["messages"] : nil
+      ai_clean_messages(messages)
+    end
+    saved_metadata = conversation ? { "conversation_id" => conversation["id"], "turn_id" => turn["id"], "title" => conversation["title"] } : {}
+    failure = lambda do |message, state, partial|
+      spark_update_turn(conversation["id"], turn["id"], status: state, answer: partial, error: message) if conversation
+      message
+    rescue SparkHistoryError => e
+      puts "Spark history error: #{e.class}: #{e.message}"
+      "#{message} Conversation history could not be saved: #{e.message}"
+    end
+    answer_prompt = lambda do |web_search|
+      if conversation
+        ai_system_prompt(
+          data, conversation["contexts"].fetch(turn["context_id"])["text"],
+          web_search: web_search, saved_research: spark_research_context(conversation)
+        )
+      end
+    end
 
     if request["Accept"].to_s.include?("application/x-ndjson")
       response.status = 200
@@ -255,6 +323,7 @@ server.mount_proc "/ai/ask" do |request, response|
       response["X-Accel-Buffering"] = "no"
       response.chunked = true
       response.body = proc do |out|
+        partial = +""
         send_event = lambda do |event|
           # WEBrick's ChunkedWrapper#<< passes an Array to #write, so call #write directly.
           out.write("#{JSON.generate(event)}\n")
@@ -262,16 +331,28 @@ server.mount_proc "/ai/ask" do |request, response|
           raise AiClientGone, e.message
         end
         begin
+          send_event.call(saved_metadata.merge("type" => "conversation")) if conversation
           web_search = ai_prepare_web_search(data, messages) { |event| send_event.call(event) } if use_web
-          answer = ai_ask_stream(data, messages, web_search: web_search) { |event| send_event.call(event) }
-          send_event.call("type" => "done", "answer" => answer)
+          spark_update_turn(conversation["id"], turn["id"], search: web_search) if conversation && web_search
+          answer = ai_ask_stream(data, messages, web_search: web_search, system_prompt: answer_prompt.call(web_search)) do |event|
+            partial << event["text"] if event["type"] == "token"
+            send_event.call(event)
+          end
+          if conversation
+            send_event.call("type" => "naming") unless %w[ai manual].include?(conversation["title_source"])
+            saved = spark_complete_turn(conversation["id"], turn["id"], data, answer)
+            saved_metadata.merge!(saved.slice("title", "title_error"))
+          end
+          send_event.call(saved_metadata.merge("type" => "done", "answer" => answer))
         rescue AiClientGone
-          nil
-        rescue AiUnavailable => e
-          send_event.call("type" => "error", "error" => e.message)
+          failure.call("The connection closed before this answer finished. Ask your question again.", "interrupted", partial)
+        rescue AiUnavailable, SparkHistoryError => e
+          message = failure.call(e.message, "failed", partial)
+          send_event.call(saved_metadata.merge("type" => "error", "error" => message))
         rescue StandardError => e
           puts "Spark error: #{e.class}: #{e.message}"
-          send_event.call("type" => "error", "error" => "Something went wrong asking Spark.")
+          message = failure.call("Something went wrong asking Spark.", "failed", partial)
+          send_event.call(saved_metadata.merge("type" => "error", "error" => message))
         end
       rescue AiClientGone
         nil
@@ -280,21 +361,34 @@ server.mount_proc "/ai/ask" do |request, response|
     end
 
     web_search = ai_prepare_web_search(data, messages) if use_web
-    answer = ai_ask(data, messages, web_search: web_search)
+    spark_update_turn(conversation["id"], turn["id"], search: web_search) if conversation && web_search
+    answer = ai_ask(data, messages, web_search: web_search, system_prompt: answer_prompt.call(web_search))
+    if conversation
+      saved = spark_complete_turn(conversation["id"], turn["id"], data, answer)
+      saved_metadata.merge!(saved.slice("title", "title_error"))
+    end
     response.status = 200
-    result = { "answer" => answer }
+    result = saved_metadata.merge("answer" => answer)
     result.merge!("web_query" => web_search["query"], "sources" => web_search_source_links(web_search["sources"])) if web_search
     response.body = JSON.generate(result)
   rescue JSON::ParserError, ArgumentError => e
     response.status = 422
     response.body = JSON.generate("error" => e.is_a?(ArgumentError) ? e.message : "That question couldn't be read.")
-  rescue AiUnavailable => e
-    response.status = 503
+  rescue SparkConversationNotFound => e
+    response.status = 404
     response.body = JSON.generate("error" => e.message)
+  rescue SparkConversationBusy => e
+    response.status = 409
+    response.body = JSON.generate("error" => e.message)
+  rescue AiUnavailable, SparkHistoryError => e
+    response.status = 503
+    message = failure ? failure.call(e.message, "failed", "") : e.message
+    response.body = JSON.generate((saved_metadata || {}).merge("error" => message))
   rescue StandardError => e
     puts "Spark error: #{e.class}: #{e.message}"
     response.status = 500
-    response.body = JSON.generate("error" => "Something went wrong asking Spark.")
+    message = failure ? failure.call("Something went wrong asking Spark.", "failed", "") : "Something went wrong asking Spark."
+    response.body = JSON.generate((saved_metadata || {}).merge("error" => message))
   end
 end
 
@@ -959,6 +1053,11 @@ server.mount_proc "/settings/backup/download" do |request, response|
   response["Content-Length"] = archive.bytesize.to_s
   response["Cache-Control"] = "no-store"
   response.body = archive
+rescue BackupRestoreError, SparkHistoryError => e
+  puts "Backup download error: #{e.class}: #{e.message}"
+  response.status = 500
+  response["Content-Type"] = "text/plain; charset=utf-8"
+  response.body = e.message
 rescue => e
   puts "Backup download error: #{e.class}: #{e.message}"
 

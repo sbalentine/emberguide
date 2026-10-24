@@ -22,7 +22,7 @@ BACKUP_SETTINGS_FILE =
 
 BACKUP_SEND_HOUR = 3
 DIGEST_SEND_HOUR = 6
-BACKUP_SCHEMA_VERSION = 3
+BACKUP_SCHEMA_VERSION = 4
 BACKUP_MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 BACKUP_MAX_ENTRY_BYTES = 10 * 1024 * 1024
 BACKUP_MAX_TOTAL_BYTES = 25 * 1024 * 1024
@@ -164,7 +164,8 @@ def backup_payloads(now: Time.now)
     "achievement_history.json" => backup_json(achievement_history),
     "achievement_settings.json" => backup_json(load_achievement_settings),
     "school_calendar_settings.json" =>
-      backup_json(load_school_calendar_settings)
+      backup_json(load_school_calendar_settings),
+    "spark_history.json" => backup_json(load_spark_history)
   }
 
   manifest = {
@@ -182,14 +183,26 @@ def backup_payloads(now: Time.now)
 end
 
 def build_backup_archive(now: Time.now)
+  payloads = backup_payloads(now: now)
+  payloads.each do |filename, content|
+    if content.bytesize > BACKUP_MAX_ENTRY_BYTES
+      raise BackupRestoreError, "The backup file #{filename} is larger than 10 MB and could not be restored safely."
+    end
+  end
+  if payloads.values.sum(&:bytesize) > BACKUP_MAX_TOTAL_BYTES
+    raise BackupRestoreError, "The backup data expands beyond 25 MB and could not be restored safely."
+  end
   buffer = Zip::OutputStream.write_buffer do |archive|
-    backup_payloads(now: now).each do |filename, content|
+    payloads.each do |filename, content|
       archive.put_next_entry(filename)
       archive.write(content)
     end
   end
 
-  buffer.string
+  archive = buffer.string
+  raise BackupRestoreError, "The backup ZIP is larger than 25 MB." if archive.bytesize > BACKUP_MAX_ARCHIVE_BYTES
+
+  archive
 end
 
 def backup_archive_filename(now)
@@ -207,13 +220,16 @@ def backup_restore_paths
     "backup_settings.json" => BACKUP_SETTINGS_FILE,
     "achievement_history.json" => ACHIEVEMENT_HISTORY_FILE,
     "achievement_settings.json" => ACHIEVEMENT_SETTINGS_FILE,
-    "school_calendar_settings.json" => SCHOOL_CALENDAR_SETTINGS_FILE
+    "school_calendar_settings.json" => SCHOOL_CALENDAR_SETTINGS_FILE,
+    "spark_history.json" => SPARK_HISTORY_FILE
   }
 end
 
 def validate_backup_json(filename, value)
   valid =
     case filename
+    when "spark_history.json"
+      valid_spark_history?(value)
     when "canvas_cache.json", "course_name_mappings.json"
       value.is_a?(Hash)
     when "manual_coursework.json"
@@ -317,7 +333,7 @@ def validated_backup_payloads(archive)
 
   manifest = JSON.parse(manifest_content)
   schema_version = manifest["schema_version"]
-  unless [1, 2, BACKUP_SCHEMA_VERSION].include?(schema_version)
+  unless [1, 2, 3, BACKUP_SCHEMA_VERSION].include?(schema_version)
     raise BackupRestoreError, "This backup version is not supported."
   end
   Time.iso8601(manifest.fetch("created_at"))
@@ -330,10 +346,13 @@ def validated_backup_payloads(archive)
           school_calendar_settings.json
           achievement_history.json
           achievement_settings.json
+          spark_history.json
         ]
     when 2
       backup_restore_paths.keys -
-        %w[achievement_history.json achievement_settings.json]
+        %w[achievement_history.json achievement_settings.json spark_history.json]
+    when 3
+      backup_restore_paths.keys - %w[spark_history.json]
     else
       backup_restore_paths.keys
     end
@@ -419,8 +438,28 @@ def restore_backup_archive(archive)
 
   $backup_restore_mutex.synchronize do
     $refresh_mutex.synchronize do
-      write_restored_payloads(payloads)
-      apply_restored_runtime_state(payloads)
+      SPARK_HISTORY_MUTEX.synchronize do
+        begin
+          if load_spark_history["conversations"].values.any? { |conversation| conversation["turns"].any? { |turn| turn["status"] == "pending" } }
+            raise BackupRestoreError, "Wait for Spark to finish answering before restoring a backup."
+          end
+        rescue SparkHistoryError => e
+          puts "Replacing unreadable Spark history during restore: #{e.message}"
+        end
+        if (history = payloads["spark_history.json"])
+          history[:value]["conversations"].each_value do |conversation|
+            conversation["turns"].each do |turn|
+              next unless turn["status"] == "pending"
+
+              turn["status"] = "interrupted"
+              turn["error"] = "This backup was created before the answer finished. Ask your question again."
+            end
+          end
+          history[:content] = backup_json(history[:value])
+        end
+        write_restored_payloads(payloads)
+        apply_restored_runtime_state(payloads)
+      end
     end
   end
 

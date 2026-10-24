@@ -3814,14 +3814,34 @@ button.calendar-month-day[aria-expanded="true"] {
 
 /* Ask EmberGuide */
 .ask-page .card { padding: 20px; }
-.ask-status { align-self: center; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.ask-page .settings-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px 16px; }
+.ask-page .settings-header h1 { margin: 0; }
+.ask-page .settings-header .subtitle { grid-column: 1 / -1; }
+.ask-conversation-title { margin: 0 0 12px; font-size: 16px; overflow-wrap: anywhere; }
+.ask-history { margin-bottom: 12px; }
+.ask-history summary { cursor: pointer; font-weight: 700; }
+.ask-history-list { display: grid; gap: 8px; margin: 12px 0; max-height: 40vh; overflow-y: auto; }
+.ask-history-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ask-history-open { flex: 1 1 180px; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.ask-history-open[aria-current="true"] { border-color: var(--purple); }
+.ask-history-row time { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.ask-history-status { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.ask-history-status:empty { display: none; }
+.ask-history button:disabled { opacity: 0.6; cursor: wait; }
+.ask-history button:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.ask-saved-context { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.ask-saved-context summary { cursor: pointer; }
+.ask-saved-context pre { max-height: 25vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ask-status { display: inline-block; flex-shrink: 0; align-self: center; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .ask-status[data-state="on"] { border-color: var(--success-border); background: var(--success-bg); color: var(--success); }
 .ask-status[data-state="off"] { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); }
 .ask-setup h2 { margin: 0 0 8px; font-size: 18px; }
 .ask-setup p { margin: 0; color: var(--muted); line-height: 1.6; }
 .ask-setup code { color: var(--text); }
-.ask-log { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; min-height: 120px; overflow-y: auto; padding-bottom: 4px; }
-.ask-empty { margin: 0; color: var(--muted); }
+.ask-log { display: flex; flex-direction: column; gap: 10px; height: clamp(160px, 30svh, 320px); overflow-y: auto; overscroll-behavior-y: contain; padding-bottom: 4px; }
+.ask-log > * { flex-shrink: 0; }
+.ask-log:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.ask-log:empty { display: none; }
 .ask-message { max-width: 85%; padding: 10px 14px; border-radius: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ask-message-user { align-self: flex-end; background: var(--purple); color: #fff; border-bottom-right-radius: 4px; }
 .ask-message-assistant { align-self: flex-start; border: 1px solid var(--border); background: var(--card-raised); color: var(--text); border-bottom-left-radius: 4px; }
@@ -3854,15 +3874,19 @@ button.calendar-month-day[aria-expanded="true"] {
 .ask-markdown strong { color: var(--text); font-weight: 750; }
 .ask-markdown code { padding: 1px 5px; border-radius: 5px; background: var(--border); font-size: 0.92em; }
 .ask-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 12px; }
+.ask-suggestions-mobile { display: none; }
+.ask-suggestions-mobile select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--text); font: inherit; }
 .ask-suggestion, .ask-clear { padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
 .ask-suggestion:hover, .ask-clear:hover { border-color: var(--purple); }
 .ask-form textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--text); font: inherit; resize: vertical; }
-.ask-form textarea:focus-visible, .ask-suggestion:focus-visible, .ask-clear:focus-visible, .ask-send:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.ask-form textarea:focus-visible, .ask-suggestion:focus-visible, .ask-suggestions-mobile select:focus-visible, .ask-web-details summary:focus-visible, .ask-clear:focus-visible, .ask-send:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
 .ask-web { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
 .ask-web-toggle { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
 .ask-web input[type="checkbox"] { accent-color: var(--purple); }
 .ask-web input:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
 .ask-web p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.ask-web-details { margin-top: 8px; }
+.ask-web-details summary { width: fit-content; padding: 6px 0; color: var(--muted); font-size: 13px; cursor: pointer; }
 .ask-sources { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }
 .ask-sources p { color: var(--muted); }
 .ask-sources ol { padding-left: 22px; margin-bottom: 0; }
@@ -3873,6 +3897,11 @@ button.calendar-month-day[aria-expanded="true"] {
 .ask-context { margin-top: 16px; }
 .ask-context summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 .ask-context pre { max-height: 50vh; margin: 12px 0 0; overflow: auto; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+
+@media (max-width: 600px) {
+  .ask-suggestions { display: none; }
+  .ask-suggestions-mobile { display: block; margin: 16px 0 12px; }
+}
 
 /* Spark settings */
 .spark-settings-page .settings-header { display: flex; justify-content: space-between; gap: 16px; }

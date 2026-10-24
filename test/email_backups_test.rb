@@ -2,6 +2,7 @@ require_relative "test_helper"
 
 class EmailBackupsTest < Minitest::Test
   def setup
+    FileUtils.rm_f(SPARK_HISTORY_FILE)
     FileUtils.rm_f(BACKUP_SETTINGS_FILE)
     FileUtils.rm_f(MANUAL_COURSEWORK_FILE)
     FileUtils.rm_f(GRADE_OVERRIDES_FILE)
@@ -130,6 +131,7 @@ class EmailBackupsTest < Minitest::Test
       manifest.json
       manual_coursework.json
       school_calendar_settings.json
+      spark_history.json
     ]
     assert_equal expected_files, entries.keys.sort
     assert_equal "Piano", JSON.parse(entries["manual_coursework.json"]).dig(
@@ -166,7 +168,7 @@ class EmailBackupsTest < Minitest::Test
       "2027-06-04",
       JSON.parse(entries["achievement_settings.json"])["school_year_end"]
     )
-    assert_equal 3, JSON.parse(entries["manifest.json"])["schema_version"]
+    assert_equal 4, JSON.parse(entries["manifest.json"])["schema_version"]
   end
 
   def test_backup_restore_round_trip_restores_local_state
@@ -308,16 +310,71 @@ class EmailBackupsTest < Minitest::Test
     assert_includes error.message, "verification failed"
   end
 
+  def test_backup_restores_spark_chat_research_and_context_snapshots
+    conversation, turn = spark_begin_turn("Explain geography", base_data, web_search: true)
+    spark_update_turn(conversation["id"], turn["id"], search: {
+      "query" => "geography study", "sources" => [{
+        "id" => 1, "title" => "Geography", "url" => "https://example.com/geography", "text" => "Geography studies places."
+      }]
+    })
+    spark_update_turn(conversation["id"], turn["id"], status: "completed", answer: "Study places [1].")
+    original = spark_conversation(conversation["id"])
+    archive = build_backup_archive
+    spark_delete_conversation(conversation["id"])
+    assert_empty spark_conversation_list
+    assert_includes restore_backup_archive(archive), "spark_history.json"
+    assert_equal original, spark_conversation(conversation["id"])
+  end
+
+  def test_backup_refuses_history_that_would_exceed_restore_limits
+    oversized = "x" * (BACKUP_MAX_ENTRY_BYTES + 1)
+    with_replaced_method(self, :backup_payloads, ->(**) { { "spark_history.json" => oversized } }) do
+      error = assert_raises(BackupRestoreError) { build_backup_archive }
+      assert_includes error.message, "spark_history.json"
+      assert_includes error.message, "10 MB"
+    end
+  end
+
+  def test_restored_in_progress_answers_are_interrupted_and_active_restore_is_blocked
+    conversation, turn = spark_begin_turn("Explain geography", base_data, web_search: false)
+    archive = build_backup_archive
+    assert_raises(BackupRestoreError) { restore_backup_archive(archive) }
+    spark_update_turn(conversation["id"], turn["id"], status: "interrupted")
+    restore_backup_archive(archive)
+    saved = spark_conversation(conversation["id"])["turns"].first
+    assert_equal "interrupted", saved["status"]
+    assert_includes saved["error"], "backup was created before"
+    assert_raises(BackupRestoreError) do
+      validate_backup_json("spark_history.json", "conversations" => { "../bad" => {} })
+    end
+  end
+
+  def test_schema_three_restore_preserves_existing_spark_history
+    conversation, turn = spark_begin_turn("Keep this conversation", base_data, web_search: false)
+    spark_update_turn(conversation["id"], turn["id"], status: "completed", answer: "Keep this answer")
+    entries = backup_archive_entries(build_backup_archive)
+    entries.delete("spark_history.json")
+    manifest = JSON.parse(entries["manifest.json"])
+    manifest["schema_version"] = 3
+    manifest["files"].delete("spark_history.json")
+    entries["manifest.json"] = backup_json(manifest)
+    restored = restore_backup_archive(backup_archive_from_entries(entries))
+    refute_includes restored, "spark_history.json"
+    assert_equal "Keep this answer", spark_conversation(conversation["id"])["turns"].first["answer"]
+  end
+
   def test_backup_restore_accepts_schema_one_without_calendar_settings
     entries = backup_archive_entries(build_backup_archive)
     entries.delete("school_calendar_settings.json")
     entries.delete("achievement_history.json")
     entries.delete("achievement_settings.json")
+    entries.delete("spark_history.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 1
     manifest["files"].delete("school_calendar_settings.json")
     manifest["files"].delete("achievement_history.json")
     manifest["files"].delete("achievement_settings.json")
+    manifest["files"].delete("spark_history.json")
     entries["manifest.json"] = backup_json(manifest)
     save_school_calendar_settings(
       "https://calendar.example.test/current.ics"
@@ -338,10 +395,12 @@ class EmailBackupsTest < Minitest::Test
     entries = backup_archive_entries(build_backup_archive)
     entries.delete("achievement_history.json")
     entries.delete("achievement_settings.json")
+    entries.delete("spark_history.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 2
     manifest["files"].delete("achievement_history.json")
     manifest["files"].delete("achievement_settings.json")
+    manifest["files"].delete("spark_history.json")
     entries["manifest.json"] = backup_json(manifest)
     record_achievement_day(
       { "missing" => [] },
