@@ -174,7 +174,7 @@ class EmailBackupsTest < Minitest::Test
       "2027-06-04",
       JSON.parse(entries["achievement_settings.json"])["school_year_end"]
     )
-    assert_equal 4, JSON.parse(entries["manifest.json"])["schema_version"]
+    assert_equal 5, JSON.parse(entries["manifest.json"])["schema_version"]
   end
 
   def test_backup_restore_round_trip_restores_local_state
@@ -316,8 +316,8 @@ class EmailBackupsTest < Minitest::Test
     assert_includes error.message, "verification failed"
   end
 
-  def test_backup_restores_spark_chat_research_and_context_snapshots
-    conversation, turn = spark_begin_turn("Explain geography", base_data, web_search: true)
+  def test_backup_restores_spark_chat_and_research_without_school_context
+    conversation, turn = spark_begin_turn("Explain geography", web_search: true)
     spark_update_turn(conversation["id"], turn["id"], search: {
       "query" => "geography study", "sources" => [{
         "id" => 1, "title" => "Geography", "url" => "https://example.com/geography", "text" => "Geography studies places."
@@ -326,6 +326,10 @@ class EmailBackupsTest < Minitest::Test
     spark_update_turn(conversation["id"], turn["id"], status: "completed", answer: "Study places [1].")
     original = spark_conversation(conversation["id"])
     archive = build_backup_archive
+    history = JSON.parse(backup_archive_entries(archive).fetch("spark_history.json"))
+    refute history.key?("contexts")
+    assert history["conversations"].values.none? { |saved| saved.key?("contexts") }
+    assert history["conversations"].values.flat_map { |saved| saved["turns"] }.none? { |saved| saved.key?("context_id") }
     spark_delete_conversation(conversation["id"])
     assert_empty spark_conversation_list
     assert_includes restore_backup_archive(archive), "spark_history.json"
@@ -342,7 +346,7 @@ class EmailBackupsTest < Minitest::Test
   end
 
   def test_restored_in_progress_answers_are_interrupted_and_active_restore_is_blocked
-    conversation, turn = spark_begin_turn("Explain geography", base_data, web_search: false)
+    conversation, turn = spark_begin_turn("Explain geography", web_search: false)
     archive = build_backup_archive
     assert_raises(BackupRestoreError) { restore_backup_archive(archive) }
     spark_update_turn(conversation["id"], turn["id"], status: "interrupted")
@@ -356,7 +360,7 @@ class EmailBackupsTest < Minitest::Test
   end
 
   def test_schema_three_restore_preserves_existing_spark_history
-    conversation, turn = spark_begin_turn("Keep this conversation", base_data, web_search: false)
+    conversation, turn = spark_begin_turn("Keep this conversation", web_search: false)
     spark_update_turn(conversation["id"], turn["id"], status: "completed", answer: "Keep this answer")
     entries = backup_archive_entries(build_backup_archive)
     entries.delete("spark_history.json")

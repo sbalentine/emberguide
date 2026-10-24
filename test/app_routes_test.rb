@@ -379,6 +379,9 @@ class AppRoutesTest < Minitest::Test
 
       $dashboard_data["profile"]["short_name"] = "Avery Updated"
       $dashboard_data["updated_at"] = "2026-10-25T12:00:00Z"
+      $dashboard_data["modules"] = { "1" => [{ "name" => "New geography lesson", "items" => [
+        { "type" => "Page", "title" => "River practice", "content" => { "text" => "Review the Nile's role in farming." } }
+      ] }] }
       response = post_json("/ai/ask", { "question" => "Help me practice", "conversation_id" => id }, "Accept" => "application/x-ndjson")
       events = response.body.lines.map { |line| JSON.parse(line) }
       assert_equal "conversation", events.first["type"]
@@ -386,12 +389,14 @@ class AppRoutesTest < Minitest::Test
       assert_equal "done", events.last["type"]
       saved = JSON.parse(request("/api/ai/conversations/#{id}").body)
       assert_equal 2, saved["turns"].length
-      assert_equal 2, saved["contexts"].length
-      assert_equal original["contexts"], saved["contexts"].slice(*original["contexts"].keys)
+      refute original.key?("contexts")
+      refute saved.key?("contexts")
+      assert saved["turns"].none? { |turn| turn.key?("context_id") }
       sent = fake.requests.last["body"]["messages"]
       assert_equal %w[system user assistant user], sent.map { |message| message["role"] }
       assert_includes sent.first["content"], "for Avery"
-      assert_includes sent.first["content"], saved["contexts"].fetch(saved["turns"].last["context_id"])["text"]
+      assert_includes sent.first["content"], "Review the Nile's role in farming."
+      refute_includes File.read(SPARK_HISTORY_FILE), "Review the Nile's role in farming."
       assert_includes sent.first["content"], "previously saved web research for general explanations"
       assert_includes sent.first["content"], "Previously saved web research"
       assert_includes sent.first["content"], "The Nile supports farming."
@@ -428,7 +433,7 @@ class AppRoutesTest < Minitest::Test
     assert_equal "404", post_json("/ai/ask", "question" => "Hi", "conversation_id" => SecureRandom.uuid).code
     assert_equal "422", post_json("/ai/ask", "question" => "").code
     assert_equal "422", post_json("/api/ai/conversations/#{id}", "title" => "").code
-    _, pending = spark_begin_turn("Still running", $dashboard_data, conversation_id: id, web_search: false)
+    _, pending = spark_begin_turn("Still running", conversation_id: id, web_search: false)
     assert_equal "409", post_json("/ai/ask", "question" => "Again", "conversation_id" => id).code
     spark_update_turn(id, pending["id"], status: "interrupted", error: "Test ended")
   ensure

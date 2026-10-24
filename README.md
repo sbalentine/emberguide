@@ -201,12 +201,10 @@ a separate thread without deleting the previous one. A conversation's URL keeps
 that thread selected on refresh; opening Spark without a selection resumes the
 most recently updated conversation.
 
-Each answer keeps a timestamped snapshot of the school context used to generate
-it. Identical snapshots within a conversation share one stored copy. Web-enabled
-turns also retain the generated search query, source titles, links, and bounded
-source excerpts. Expand **School context saved** below an answer to inspect its
-original school context. New answers use the latest saved school data, not the
-old snapshot. Relevant research from up to three recent successful searches can
+School context is built from current saved Canvas data when answering, used in
+memory, and not copied into conversation history. History stores questions,
+answers, timestamps, and any generated web-search query, source titles, links,
+and bounded source excerpts. Relevant research from up to three recent successful searches can
 be reused without running another search. Source excerpts remain untrusted
 reference material and cannot override current Canvas instructions.
 
@@ -219,17 +217,17 @@ started on another device. Restarts mark unfinished replies as interrupted.
 History is stored in `spark_history.json` under `/data` in the Home Assistant
 add-on or `emberguide/tmp` locally; `SPARK_HISTORY_FILE` can override that path.
 Configured credentials are redacted from saved content. Conversations and their
-research/context snapshots are included in downloaded and emailed backups.
+saved web research are included in downloaded and emailed backups. Canvas data
+is backed up separately, not repeated for each conversation or answer.
 Deleting a conversation does not remove copies from existing backups, and
-restoring one of those backups can bring it back. Older backups remain supported
-and do not erase existing Spark history when no history file is present.
+restoring one of those backups can bring it back.
 The existing backup limits still apply: 10 MB per file and 25 MB overall.
 Oversized backups fail explicitly instead of producing an archive that cannot
 be restored; history is never silently trimmed to make it fit.
 
 EmberGuide has no login: anyone who can access the app can read, rename, or
 delete its saved conversations. Backups therefore contain private student chat
-and school context and should be stored and emailed only where appropriate.
+and saved web research and should be stored and emailed only where appropriate.
 
 For public study resources, turn on **Search the web** before asking a
 question. Expand **How web search works** below the checkbox for service and
@@ -462,7 +460,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.9.0"
+version: "1.10.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

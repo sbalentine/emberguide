@@ -3830,9 +3830,6 @@ button.calendar-month-day[aria-expanded="true"] {
 .ask-history-status:empty { display: none; }
 .ask-history button:disabled { opacity: 0.6; cursor: wait; }
 .ask-history button:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
-.ask-saved-context { margin-top: 12px; color: var(--muted); font-size: 12px; }
-.ask-saved-context summary { cursor: pointer; }
-.ask-saved-context pre { max-height: 25vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ask-status { display: inline-block; flex-shrink: 0; align-self: center; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .ask-status[data-state="on"] { border-color: var(--success-border); background: var(--success-bg); color: var(--success); }
 .ask-status[data-state="off"] { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); }

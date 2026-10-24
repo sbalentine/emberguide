@@ -296,7 +296,7 @@ server.mount_proc "/ai/ask" do |request, response|
     conversation = nil
     turn = nil
     if payload.is_a?(Hash) && payload.key?("question")
-      conversation, turn = spark_begin_turn(payload["question"], data, web_search: use_web, conversation_id: payload["conversation_id"])
+      conversation, turn = spark_begin_turn(payload["question"], web_search: use_web, conversation_id: payload["conversation_id"])
       messages = spark_conversation_messages(conversation)
     else
       messages = payload.is_a?(Hash) ? payload["messages"] : nil
@@ -313,7 +313,7 @@ server.mount_proc "/ai/ask" do |request, response|
     answer_prompt = lambda do |web_search|
       if conversation
         ai_system_prompt(
-          data, conversation["contexts"].fetch(turn["context_id"])["text"],
+          data, ai_class_context(data),
           web_search: web_search, saved_research: spark_research_context(conversation)
         )
       end

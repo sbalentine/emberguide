@@ -210,24 +210,6 @@
     if (following) scrollToLatest();
   };
 
-  const appendSavedContext = (bubble, context, turn) => {
-    if (!context) return;
-    const following = isFollowing();
-    const details = document.createElement("details");
-    details.className = "ask-saved-context";
-    const summary = document.createElement("summary");
-    const date = new Date(context.saved_at).toLocaleString();
-    summary.textContent = `School context saved ${date}`;
-    const text = document.createElement("pre");
-    details.addEventListener("toggle", () => {
-      if (details.open) text.textContent = context.text;
-    });
-    details.append(summary, text);
-    bubble.append(details);
-    bubble.dataset.turnId = turn.id;
-    if (following) scrollToLatest();
-  };
-
   const setConversation = (id, title = "New conversation") => {
     conversationId = id;
     conversationTitle.textContent = title;
@@ -277,7 +259,6 @@
         bubble.classList.add("is-error");
       }
       if (turn.search) appendSources(bubble, turn.search.query, turn.search.sources);
-      appendSavedContext(bubble, conversation.contexts[turn.context_id], turn);
     });
     remotePending = conversation.turns.some((turn) => turn.status === "pending");
     historyStatus.textContent = remotePending ? "This conversation has an answer in progress. Refresh conversations when it finishes, or start a new conversation." : conversation.title_error || "";
@@ -467,7 +448,6 @@
     if (!question || form.dataset.busy || historyBusy || remotePending) return;
     const useWeb = webToggle?.checked === true;
     let query = "";
-    let turnId = null;
 
     form.dataset.busy = "true";
     historyStatus.textContent = "";
@@ -513,7 +493,6 @@
         const result = await response.json().catch(() => ({}));
         if (result.conversation_id) {
           setConversation(result.conversation_id, result.title);
-          turnId = result.turn_id;
         }
         throw new Error(result.error || "Spark didn't answer.");
       }
@@ -522,7 +501,6 @@
       await readStream(response, (event) => {
         if (event.type === "conversation") {
           setConversation(event.conversation_id, event.title);
-          turnId = event.turn_id;
         } else if (event.type === "preparing_search") {
           progress.preparingSearch();
         } else if (event.type === "retrying_search") {
@@ -573,12 +551,6 @@
       progress.stop();
       pending.classList.remove("is-pending", "is-streaming");
       try {
-        if (conversationId && turnId) {
-          const saved = await historyJson(`/api/ai/conversations/${conversationId}`);
-          setConversation(saved.id, saved.title);
-          const turn = saved.turns.find((entry) => entry.id === turnId);
-          if (turn) appendSavedContext(pending, saved.contexts[turn.context_id], turn);
-        }
         await refreshHistory();
       } catch (error) {
         historyStatus.textContent = `Conversation history couldn't be refreshed: ${error.message}`;

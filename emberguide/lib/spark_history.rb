@@ -1,4 +1,3 @@
-require "digest"
 require "fileutils"
 require "json"
 require "securerandom"
@@ -8,17 +7,19 @@ SPARK_HISTORY_FILE = ENV.fetch("SPARK_HISTORY_FILE") do
 end
 SPARK_HISTORY_MUTEX = Mutex.new
 SPARK_HISTORY_ID = /\A[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\z/
+SPARK_HISTORY_SCHEMA_VERSION = 2
 
 class SparkHistoryError < StandardError; end
 class SparkConversationNotFound < SparkHistoryError; end
 class SparkConversationBusy < SparkHistoryError; end
 
 def empty_spark_history
-  { "conversations" => {} }
+  { "schema_version" => SPARK_HISTORY_SCHEMA_VERSION, "conversations" => {} }
 end
 
 def valid_spark_history?(history)
-  return false unless history.is_a?(Hash) && history["conversations"].is_a?(Hash)
+  return false unless history.is_a?(Hash) && history["schema_version"] == SPARK_HISTORY_SCHEMA_VERSION &&
+    history["conversations"].is_a?(Hash) && !history.key?("contexts")
 
   history["conversations"].all? do |id, conversation|
     next false unless id.is_a?(String) && id.match?(SPARK_HISTORY_ID) && conversation.is_a?(Hash) &&
@@ -26,19 +27,12 @@ def valid_spark_history?(history)
       conversation["title"].strip.length.between?(1, 120) &&
       (conversation["title_source"].nil? || %w[pending ai manual].include?(conversation["title_source"])) &&
       (conversation["title_error"].nil? || conversation["title_error"].is_a?(String)) &&
-      conversation["contexts"].is_a?(Hash) && conversation["turns"].is_a?(Array)
+      !conversation.key?("contexts") && conversation["turns"].is_a?(Array)
 
     Time.iso8601(conversation.fetch("created_at"))
     Time.iso8601(conversation.fetch("updated_at"))
-    contexts_valid = conversation["contexts"].all? do |digest, context|
-      context.is_a?(Hash) && context["text"].is_a?(String) &&
-        context["text"].length <= AI_CONTEXT_MAX_CHARS &&
-        Digest::SHA256.hexdigest(context["text"]) == digest &&
-        context["saved_at"].is_a?(String) && Time.iso8601(context["saved_at"]) &&
-        (context["data_updated_at"].nil? || context["data_updated_at"].is_a?(String))
-    end
     turn_ids = conversation["turns"].map { |turn| turn.is_a?(Hash) && turn["id"] }
-    contexts_valid && turn_ids.uniq.length == turn_ids.length &&
+    turn_ids.uniq.length == turn_ids.length &&
       conversation["turns"].all? do |turn|
         next false unless turn.is_a?(Hash) && turn["id"].is_a?(String) &&
           turn["id"].match?(SPARK_HISTORY_ID) &&
@@ -46,7 +40,7 @@ def valid_spark_history?(history)
           turn["question"].is_a?(String) && turn["question"].length.between?(1, AI_MAX_MESSAGE_CHARS) &&
           turn["answer"].is_a?(String) && (turn["error"].nil? || turn["error"].is_a?(String)) &&
           [true, false].include?(turn["web_search"]) &&
-          conversation["contexts"].key?(turn["context_id"])
+          %w[context_id context_clock context_data_updated_at].none? { |field| turn.key?(field) }
 
         Time.iso8601(turn.fetch("created_at"))
         Time.iso8601(turn.fetch("updated_at"))
@@ -120,31 +114,26 @@ def spark_conversation_idle!(conversation)
   end
 end
 
-def spark_begin_turn(question, data, web_search:, conversation_id: nil)
+def spark_begin_turn(question, web_search:, conversation_id: nil)
   unless question.is_a?(String) && question.strip.length.between?(1, AI_MAX_MESSAGE_CHARS)
     raise ArgumentError, "Ask a question of at most #{AI_MAX_MESSAGE_CHARS} characters."
   end
   question = spark_redact_history_text(question.strip)
-  context = spark_redact_history_text(ai_class_context(data))
-  digest = Digest::SHA256.hexdigest(context)
   now = Time.now.iso8601(6)
   update_spark_history do |history|
     conversation = if conversation_id.nil?
                      id = SecureRandom.uuid
                      history["conversations"][id] = {
                        "id" => id, "title" => "New conversation", "title_source" => "pending", "created_at" => now, "updated_at" => now,
-                       "turns" => [], "contexts" => {}
+                       "turns" => []
                      }
                    else
                      spark_conversation(conversation_id, history)
                    end
     spark_conversation_idle!(conversation)
-    conversation["contexts"][digest] ||= {
-      "text" => context, "saved_at" => now, "data_updated_at" => data["updated_at"]
-    }
     turn = {
       "id" => SecureRandom.uuid, "status" => "pending", "question" => question, "answer" => "",
-      "error" => nil, "web_search" => web_search, "search" => nil, "context_id" => digest,
+      "error" => nil, "web_search" => web_search, "search" => nil,
       "created_at" => now, "updated_at" => now
     }
     conversation["turns"] << turn

@@ -4,6 +4,9 @@ class SparkHistoryTest < Minitest::Test
   def setup
     FileUtils.rm_f(SPARK_HISTORY_FILE)
     FileUtils.rm_f(COURSE_NAME_MAPPINGS_FILE)
+    FileUtils.rm_f(HIDDEN_COURSES_FILE)
+    FileUtils.rm_f(GRADE_OVERRIDES_FILE)
+    FileUtils.rm_f(MANUAL_COURSEWORK_FILE)
     @data = { "profile" => { "short_name" => "Avery" }, "updated_at" => "2026-10-24T12:00:00Z" }
   end
 
@@ -11,21 +14,23 @@ class SparkHistoryTest < Minitest::Test
     FileUtils.rm_f(SPARK_HISTORY_FILE)
   end
 
-  def begin_turn(question = "Help with fractions", conversation_id: nil, data: @data)
-    spark_begin_turn(question, data, web_search: false, conversation_id: conversation_id)
+  def begin_turn(question = "Help with fractions", conversation_id: nil)
+    spark_begin_turn(question, web_search: false, conversation_id: conversation_id)
   end
 
   def complete(conversation, turn, answer = "Practice halves and quarters.")
     spark_update_turn(conversation["id"], turn["id"], status: "completed", answer: answer)
   end
 
-  def test_round_trip_preserves_full_answers_and_deduplicates_context
+  def test_round_trip_preserves_full_answers_without_saved_school_context
     conversation, first = begin_turn
     assert_equal "New conversation", conversation["title"]
     answer = "A useful explanation. " * 300
     complete(conversation, first, answer)
     resumed, second = begin_turn("What about thirds?", conversation_id: conversation["id"])
-    assert_equal 1, resumed["contexts"].length
+    refute load_spark_history.key?("contexts")
+    refute resumed.key?("contexts")
+    assert resumed["turns"].none? { |turn| turn.key?("context_id") }
     assert_equal answer, resumed["turns"].first["answer"]
     assert_equal %w[user assistant user], spark_conversation_messages(resumed).map { |message| message["role"] }
     assert_equal answer, spark_conversation_messages(resumed)[1]["content"]
@@ -34,15 +39,14 @@ class SparkHistoryTest < Minitest::Test
     assert_equal 0o600, File.stat(SPARK_HISTORY_FILE).mode & 0o777
   end
 
-  def test_new_context_does_not_replace_the_original_snapshot
-    conversation, first = begin_turn
-    complete(conversation, first)
-    changed = @data.merge("profile" => { "short_name" => "Avery Updated" }, "updated_at" => "2026-10-25T12:00:00Z")
-    resumed, second = begin_turn("Next lesson", conversation_id: conversation["id"], data: changed)
-    assert_equal 2, resumed["contexts"].length
-    refute_equal first["context_id"], second["context_id"]
-    assert_equal @data["updated_at"], resumed["contexts"][first["context_id"]]["data_updated_at"]
-    assert_equal changed["updated_at"], resumed["contexts"][second["context_id"]]["data_updated_at"]
+  def test_saving_a_turn_does_not_generate_or_copy_school_context
+    with_replaced_method(self, :ai_class_context, ->(*) { flunk "Saving history generated school context" }) do
+      conversation, turn = begin_turn
+      complete(conversation, turn)
+      resumed, = begin_turn("Next lesson", conversation_id: conversation["id"])
+      assert_equal 2, resumed["turns"].length
+      assert resumed["turns"].all? { |entry| entry.keys.none? { |key| key.start_with?("context") } }
+    end
   end
 
   def test_research_is_saved_and_available_as_untrusted_historical_context
@@ -93,6 +97,7 @@ class SparkHistoryTest < Minitest::Test
     threads = 8.times.map { |index| Thread.new { begin_turn("Question #{index}") } }
     ids = threads.map(&:value).map { |conversation, _| conversation["id"] }
     assert_equal ids.sort, spark_conversation_list.map { |entry| entry["id"] }.sort
+    refute load_spark_history.key?("contexts")
     assert valid_spark_history?(load_spark_history)
   end
 
@@ -111,9 +116,8 @@ class SparkHistoryTest < Minitest::Test
     assert_empty Dir.glob("#{SPARK_HISTORY_FILE}.tmp.*")
   end
 
-  def test_credentials_are_redacted_from_saved_questions_answers_and_context
-    data = @data.merge("profile" => { "short_name" => "Avery #{TOKEN}" })
-    conversation, turn = begin_turn("Explain #{TOKEN}", data: data)
+  def test_credentials_are_redacted_from_saved_questions_and_answers
+    conversation, turn = begin_turn("Explain #{TOKEN}")
     complete(conversation, turn, "Answer with #{TOKEN}")
     refute_includes File.read(SPARK_HISTORY_FILE), TOKEN
     assert_includes spark_conversation(conversation["id"])["turns"].first["answer"], "[redacted]"
@@ -131,6 +135,21 @@ class SparkHistoryTest < Minitest::Test
     refute valid_spark_history?(history)
     assert_raises(ArgumentError) { begin_turn("x" * (AI_MAX_MESSAGE_CHARS + 1)) }
     assert_raises(SparkConversationNotFound) { begin_turn(conversation_id: "missing") }
+  end
+
+  def test_validation_rejects_school_context_storage_and_unknown_format
+    conversation, turn = begin_turn
+    history = load_spark_history
+    history["conversations"][conversation["id"]]["contexts"] = {}
+    refute valid_spark_history?(history)
+    history = load_spark_history
+    history["contexts"] = {}
+    refute valid_spark_history?(history)
+    history = load_spark_history
+    history["conversations"][conversation["id"]]["turns"].first["context_clock"] = "Old context"
+    refute valid_spark_history?(history)
+    refute valid_spark_history?("conversations" => {})
+    refute valid_spark_history?(history.merge("schema_version" => 999))
   end
 
   def test_local_ai_summarizes_subject_and_receives_no_known_names_or_secrets
