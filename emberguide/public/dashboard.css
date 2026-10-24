@@ -3821,10 +3821,12 @@ button.calendar-month-day[aria-expanded="true"] {
 .ask-conversation-title { margin: 0 0 12px; font-size: 16px; overflow-wrap: anywhere; }
 .ask-history { margin-bottom: 12px; }
 .ask-history summary { cursor: pointer; font-weight: 700; }
-.ask-history-list { display: grid; gap: 8px; margin: 12px 0; max-height: 40vh; overflow-y: auto; }
-.ask-history-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.ask-history-open { flex: 1 1 180px; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.ask-history-list { display: grid; align-content: start; gap: 8px; margin: 12px 0; overflow-y: auto; overscroll-behavior-y: contain; }
+.ask-history-row { display: flex; gap: 8px; align-items: center; }
+.ask-history-open { flex: 1 1 0; min-width: 0; text-align: left; overflow-wrap: anywhere; }
 .ask-history-open[aria-current="true"] { border-color: var(--purple); }
+.ask-history-row .ask-history-action { display: inline-flex; flex: 0 0 44px; align-items: center; justify-content: center; height: 44px; box-sizing: border-box; padding: 0; }
+.ask-history-action svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .ask-history-row time { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
 .ask-history-status { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 .ask-history-status:empty { display: none; }

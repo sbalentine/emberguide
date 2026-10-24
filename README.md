@@ -192,14 +192,17 @@ facts, such as due dates or grades, still need Canvas or the teacher.
 Spark saves conversations on the EmberGuide server, so questions and answers
 survive page refreshes and app restarts and can be opened from another device.
 Expand **Previous Conversations** to open, rename, or delete one conversation.
+The list shows the three most recent conversations at a time; scroll within it
+to reach older conversations without expanding the page.
+Compact edit and trash icons keep conversation actions on one row on all screens.
 After the first successful reply, the local AI summarizes the subject in a short
 title instead of repeating the question. A manually renamed title is never
 overwritten. If subject generation fails, the reply remains saved and a notice
 offers manual renaming. There is no
 bulk-delete control or automatic history expiration. **New conversation** starts
 a separate thread without deleting the previous one. A conversation's URL keeps
-that thread selected on refresh; opening Spark without a selection resumes the
-most recently updated conversation.
+that thread selected on refresh. Opening Spark from navigation or without a
+conversation selection always starts on the new-conversation page.
 
 School context is built from current saved Canvas data when answering, used in
 memory, and not copied into conversation history. History stores questions,
@@ -460,7 +463,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.10.0"
+version: "1.10.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

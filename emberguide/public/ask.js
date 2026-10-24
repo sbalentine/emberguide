@@ -292,9 +292,23 @@
     updateControls();
   };
 
+  const sizeHistoryList = () => {
+    const rows = historyList.querySelectorAll(".ask-history-row");
+    if (rows.length <= 3) {
+      historyList.style.removeProperty("max-height");
+      return;
+    }
+    const first = rows[0].getBoundingClientRect();
+    const third = rows[2].getBoundingClientRect();
+    if (third.height > 0) historyList.style.maxHeight = `${third.bottom - first.top}px`;
+  };
+  const historyResizeObserver = new ResizeObserver(sizeHistoryList);
+
   const refreshHistory = async () => {
     const result = await historyJson("/api/ai/conversations");
+    historyResizeObserver.disconnect();
     historyList.replaceChildren();
+    historyList.style.removeProperty("max-height");
     historySummary.textContent = `Previous Conversations (${result.conversations.length})`;
     if (!result.conversations.length) {
       const empty = document.createElement("p");
@@ -318,8 +332,9 @@
       open.addEventListener("click", () => withHistoryAction(() => openConversation(conversation.id)));
       const rename = document.createElement("button");
       rename.type = "button";
-      rename.className = "ask-clear";
-      rename.textContent = "Rename";
+      rename.className = "ask-clear ask-history-action";
+      rename.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 5 4 4M4 20l5-1L20 8a2.8 2.8 0 0 0-4-4L5 15Z"/></svg>';
+      rename.title = "Rename conversation";
       rename.setAttribute("aria-label", `Rename ${conversation.title}`);
       rename.addEventListener("click", () => {
         const title = window.prompt("Conversation title", conversation.title);
@@ -334,8 +349,9 @@
       });
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = "ask-clear";
-      remove.textContent = "Delete";
+      remove.className = "ask-clear ask-history-action";
+      remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg>';
+      remove.title = "Delete conversation";
       remove.setAttribute("aria-label", `Delete ${conversation.title}`);
       remove.addEventListener("click", () => {
         if (!window.confirm(`Delete "${conversation.title}"? Copies in existing backups will remain.`)) return;
@@ -349,6 +365,10 @@
       });
       row.append(open, rename, remove);
       historyList.append(row);
+    });
+    sizeHistoryList();
+    historyList.querySelectorAll(".ask-history-row").forEach((row, index) => {
+      if (index < 3) historyResizeObserver.observe(row);
     });
     return result.conversations;
   };
@@ -590,11 +610,9 @@
   });
 
   const restoreHistory = () => withHistoryAction(async () => {
-    const conversations = await refreshHistory();
+    await refreshHistory();
     const requested = new URL(window.location.href).searchParams.get("conversation");
-    if (requested === "new") return;
-    const id = requested || conversations[0]?.id;
-    if (id) await openConversation(id);
+    if (requested && requested !== "new") await openConversation(requested);
   });
   historyRefresh.addEventListener("click", restoreHistory);
   restoreHistory();
