@@ -7,6 +7,10 @@ ENV["GMAIL_APP_PASSWORD"] = ""
 require "minitest/autorun"
 require "tmpdir"
 require "fileutils"
+require "stringio"
+
+TEST_VERBOSE_LOGS = ENV["TEST_VERBOSE_LOGS"] == "1"
+TEST_SERVER_LOG = StringIO.new
 
 TEST_TMP_DIR = Dir.mktmpdir("canvas-dashboard-test")
 ENV["CACHE_FILE"] = File.join(TEST_TMP_DIR, "canvas_cache.json")
@@ -23,11 +27,41 @@ ENV["DAILY_OVERVIEW_FILE"] = File.join(TEST_TMP_DIR, "daily_overview.json")
 ENV["ACHIEVEMENT_HISTORY_FILE"] = File.join(TEST_TMP_DIR, "achievement_history.json")
 ENV["ACHIEVEMENT_SETTINGS_FILE"] = File.join(TEST_TMP_DIR, "achievement_settings.json")
 
-require_relative "../emberguide/app"
+original_stdout = $stdout
+begin
+  $stdout = TEST_SERVER_LOG unless TEST_VERBOSE_LOGS
+  require_relative "../emberguide/app"
+ensure
+  $stdout = original_stdout
+end
 
 Minitest.after_run do
   FileUtils.remove_entry(TEST_TMP_DIR) if File.exist?(TEST_TMP_DIR)
 end
+
+module QuietTestOutput
+  def run
+    return super if TEST_VERBOSE_LOGS
+
+    original_stdout, original_stderr = $stdout, $stderr
+    output, errors = StringIO.new, StringIO.new
+    TEST_SERVER_LOG.truncate(0)
+    TEST_SERVER_LOG.rewind
+    begin
+      $stdout, $stderr = output, errors
+      result = super
+    ensure
+      $stdout, $stderr = original_stdout, original_stderr
+      unless result&.passed?
+        logs = output.string + errors.string + TEST_SERVER_LOG.string
+        original_stdout.write("\nCaptured output for #{self.class}##{name}:\n#{logs}") unless logs.empty?
+      end
+    end
+    result
+  end
+end
+
+Minitest::Test.prepend(QuietTestOutput)
 
 class Minitest::Test
   def deep_copy(value)

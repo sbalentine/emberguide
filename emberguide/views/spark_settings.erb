@@ -20,13 +20,18 @@
       <span class="ask-status" data-ask-status>Checking Spark&hellip;</span>
     </header>
 
-    <% if request.query["saved"] == "1" %>
+    <% if request.query["saved"] == "context" %>
+      <div class="backup-message success" role="status">
+        <strong>Spark context saved.</strong>
+        Future replies and newly generated daily overviews will use these notes. Earlier answers are unchanged.
+      </div>
+    <% elsif request.query["saved"] == "1" %>
       <div class="backup-message success" role="status">
         <strong>Spark model saved.</strong>
       </div>
     <% elsif spark_error %>
       <div class="backup-message error" role="alert">
-        <strong>Spark model not saved.</strong>
+        <strong><%= spark_context_error ? "Spark context not saved." : "Spark model not saved." %></strong>
         <%= h spark_error %>
       </div>
     <% end %>
@@ -91,6 +96,38 @@
         <% end %>
       </section>
     <% end %>
+
+    <section class="card calendar-settings-card spark-context-settings">
+      <h2>Parent-provided context</h2>
+      <p class="settings-intro">Give Spark background Canvas doesn't provide, such as grade level, curriculum names, unit topics, or study preferences. These notes guide chat replies and daily email overviews. Current Canvas instructions take priority; notes don't create assignments or deadlines.</p>
+      <p class="settings-intro">Notes are saved once in Spark settings and included in backups, not copied into conversation history. Anyone who can access EmberGuide can read and edit them. Your configured local model can use curriculum hints to prepare public search topics, but raw notes aren't attached to the external search request. Avoid secrets and unnecessary sensitive details.</p>
+      <form method="post" action="/settings/spark">
+        <input type="hidden" name="action" value="context">
+        <label>
+          <span>Student context</span>
+          <textarea name="student_context" rows="4" maxlength="<%= SPARK_CONTEXT_NOTE_MAX_CHARS %>" placeholder="Grade 7. Explain one step at a time and ask the student to explain their reasoning."><%= h parent_context["student_context"] %></textarea>
+          <small>Freeform background used across classes. Up to <%= SPARK_CONTEXT_NOTE_MAX_CHARS %> characters per note and <%= SPARK_CONTEXT_TOTAL_MAX_CHARS %> in total.</small>
+        </label>
+        <h3>Class context</h3>
+        <% if context_courses.empty? %>
+          <p class="settings-intro">Refresh Canvas to add notes for individual classes. You can save student context now.</p>
+        <% end %>
+        <% context_courses.each do |course| %>
+          <% course_id = course["id"].to_s %>
+          <details class="spark-course-context">
+            <summary><%= h(context_course_names[course_id] || course["name"]) %></summary>
+            <label>
+              <span>Context for <%= h(context_course_names[course_id] || course["name"]) %></span>
+              <textarea name="course_context_<%= h course_id %>" rows="4" maxlength="<%= SPARK_CONTEXT_NOTE_MAX_CHARS %>" placeholder="Curriculum and unit topics, textbook terminology, or teacher preferences."><%= h parent_context["course_context"][course_id] %></textarea>
+              <small>For example: Unit 2 is proportional relationships. The teacher expects vocabulary definitions from the textbook. Applies only to this class.</small>
+            </label>
+          </details>
+        <% end %>
+        <div class="settings-actions">
+          <button type="submit">Save Context</button>
+        </div>
+      </form>
+    </section>
 
     <section class="card calendar-settings-card">
       <h2>Optional web search</h2>

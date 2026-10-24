@@ -120,6 +120,7 @@ class AppRoutesTest < Minitest::Test
   end
 
   def setup
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
     FileUtils.rm_f(DAILY_OVERVIEW_FILE)
     FileUtils.rm_f(SPARK_HISTORY_FILE)
     FileUtils.rm_f(COURSE_NAME_MAPPINGS_FILE)
@@ -154,6 +155,65 @@ class AppRoutesTest < Minitest::Test
     $last_successful_update = Time.parse("2026-09-27T12:00:00Z")
     $last_refresh_error = nil
     $event_journal = { "next_id" => 1, "events" => [] }
+  end
+
+  def test_parent_context_can_be_saved_without_a_running_spark_server
+    ENV.delete("LLM_URL")
+    save_spark_model("saved-model", ["saved-model"])
+    File.write(DAILY_OVERVIEW_FILE, "{}")
+    response = request("/settings/spark", Net::HTTP::Post,
+      "action" => "context", "student_context" => "Grade 7. One step at a time.",
+      "course_context_1" => "Unit 2 covers proportional relationships. Use exact textbook definitions.")
+    assert_equal "303", response.code
+    assert_equal "/settings/spark?saved=context", URI(response["Location"]).request_uri
+    saved = load_spark_settings
+    assert_equal "saved-model", saved["model"]
+    assert_includes saved.dig("course_context", "1"), "proportional relationships"
+    refute File.exist?(DAILY_OVERVIEW_FILE)
+    page = request("/settings/spark?saved=context").body
+    assert_includes page, "Spark context saved."
+    assert_includes page, "Grade 7. One step at a time."
+    assert_includes page, 'name="course_context_1"'
+    rejected = request("/settings/spark", Net::HTTP::Post,
+      "action" => "context", "student_context" => "x" * (SPARK_CONTEXT_NOTE_MAX_CHARS + 1),
+      "course_context_1" => "Keep this draft")
+    assert_equal "422", rejected.code
+    assert_includes rejected.body, "Spark context not saved."
+    assert_includes rejected.body, "Keep this draft"
+    assert_equal saved, load_spark_settings
+  ensure
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
+  end
+
+  def test_parent_context_excludes_hidden_classes_without_erasing_their_notes
+    ENV.delete("LLM_URL")
+    $dashboard_data["courses"] << { "id" => 2, "name" => "Science" }
+    $dashboard_data["course_names"]["2"] = "Science"
+    save_spark_context("Grade 7", "1" => "Visible math note", "2" => "Hidden science note",
+      "gone" => "Hidden unavailable note", "retired" => "Editable retired note")
+    save_hidden_course_ids(["2", "gone"])
+    page = request("/settings/spark").body
+    assert_includes page, 'name="course_context_1"'
+    assert_includes page, 'name="course_context_retired"'
+    refute_includes page, 'name="course_context_2"'
+    refute_includes page, 'name="course_context_gone"'
+    refute_includes page, "Hidden science note"
+    refute_includes ai_parent_context(dashboard_data_with_manual), "Hidden science note"
+    response = request("/settings/spark", Net::HTTP::Post,
+      "action" => "context", "student_context" => "Updated student note",
+      "course_context_1" => "Updated math note", "course_context_retired" => "Editable retired note",
+      "course_context_2" => "Do not overwrite hidden notes")
+    assert_equal "303", response.code
+    assert_equal "Updated math note", load_spark_settings.dig("course_context", "1")
+    assert_equal "Hidden science note", load_spark_settings.dig("course_context", "2")
+    assert_equal "Hidden unavailable note", load_spark_settings.dig("course_context", "gone")
+    save_hidden_course_ids([])
+    page = request("/settings/spark").body
+    assert_includes page, 'name="course_context_2"'
+    assert_includes page, "Hidden science note"
+  ensure
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
+    FileUtils.rm_f(HIDDEN_COURSES_FILE)
   end
 
   def test_ask_page_and_endpoint_use_the_configured_llama_server

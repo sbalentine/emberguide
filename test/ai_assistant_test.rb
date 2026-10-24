@@ -228,7 +228,7 @@ class AiAssistantTest < Minitest::Test
     assert_includes prompt, "Web search cannot recover private school facts"
     assert_includes prompt, "Never claim to have searched or automatically enable search"
     assert_includes prompt, "Do not invent missing definitions"
-    assert_includes prompt, "Answer using only the class data below"
+    assert_includes prompt, "Answer using only the class data and parent-provided context below"
   end
 
   def test_local_json_tasks_request_structured_output

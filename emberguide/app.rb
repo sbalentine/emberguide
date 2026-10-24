@@ -217,7 +217,7 @@ server.mount_proc "/ask" do |request, response|
   end
 
   data = dashboard_data_with_manual
-  ai_context = data ? ai_class_context(data) : nil
+  ai_context = data ? [ai_class_context(data), ai_parent_context(data)].reject(&:empty?).join("\n\n") : nil
   response.status = 200
   response["Content-Type"] = "text/html; charset=utf-8"
   response["Cache-Control"] = "no-cache"
@@ -415,12 +415,36 @@ server.mount_proc "/settings/spark" do |request, response|
   end
 
   spark_settings = ai_settings
+  parent_context = load_spark_settings
+  context_data = dashboard_data_with_manual || {}
+  context_courses = Array(context_data["courses"])
+  context_course_names = ai_course_names(context_data)
+  saved_course_ids = parent_context["course_context"].keys -
+    context_courses.map { |course| course["id"].to_s } - load_hidden_course_ids
+  context_courses += saved_course_ids.map { |id| { "id" => id, "name" => "Saved class #{id} (not in current Canvas data)" } }
   spark_error = nil
+  spark_context_error = false
   model_listing = spark_settings["url"] ? ai_list_models(spark_settings) : {}
   spark_models = Array(model_listing["models"])
 
   if request.request_method == "POST"
     begin
+      if request.query["action"] == "context"
+        spark_context_error = true
+        parent_context["student_context"] = request.query["student_context"].to_s
+        context_courses.each do |course|
+          id = course["id"].to_s
+          parent_context["course_context"][id] = request.query["course_context_#{id}"].to_s
+        end
+        $daily_overview_generation_mutex.synchronize do
+          save_spark_context(parent_context["student_context"], parent_context["course_context"])
+          clear_daily_overview_cache
+        end
+        response.status = 303
+        response["Location"] = "/settings/spark?saved=context"
+        response.body = ""
+        next
+      end
       raise ArgumentError, "Set up the Spark server first." unless spark_settings["url"]
       raise ArgumentError, "Spark is offline, so the model list can't be checked. Turn on the PC and try again." if model_listing["models"].nil?
 
@@ -429,7 +453,7 @@ server.mount_proc "/settings/spark" do |request, response|
       response["Location"] = "/settings/spark?saved=1"
       response.body = ""
       next
-    rescue ArgumentError => e
+    rescue ArgumentError, AiUnavailable, DailyAutomationError => e
       spark_error = e.message
       response.status = 422
     end

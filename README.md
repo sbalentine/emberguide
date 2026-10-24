@@ -187,6 +187,32 @@ from the saved class notes or extra practice for a lesson. It explains what
 search could help find but never enables it automatically. Missing school-specific
 facts, such as due dates or grades, still need Canvas or the teacher.
 
+#### Parent-provided context
+
+Open **Settings → Spark → Parent-provided context** to add freeform background
+Canvas cannot supply. Use **Student context** for grade level or learning
+preferences, and **Class context** for curriculum names, unit-to-topic mappings,
+textbook terminology, or teacher preferences. Class notes follow the class ID,
+so changing its display name does not detach them. Notes for classes no longer
+in the current cache remain editable, but are not used for unrelated classes.
+Hidden classes do not appear in Class context or supply class notes to Spark;
+their saved notes are retained for when the classes are unhidden.
+
+These notes guide both Spark chat and newly generated daily email overviews.
+Canvas remains authoritative for current instructions, dates, and assigned work;
+parent notes do not establish new deadlines, test coverage, or completion.
+Saving context invalidates the prepared daily overview so stale guidance is not
+reused. The normal daily automation can regenerate it, or use **Generate Overview
+Now**. Previously saved chat replies are not rewritten.
+
+Notes are stored once in `spark_settings.json`, included in backups, and never
+copied into conversation history. Anyone with access to EmberGuide can read or
+edit them. Raw notes are not attached to external web searches; the local model
+may use curriculum hints to identify public educational search topics. Generated
+queries still require care, and anonymity is not guaranteed. Avoid secrets and
+unnecessary sensitive information. Each note allows 4,000 characters, with a
+24,000-character combined limit. Context can be edited while Spark is offline.
+
 #### Saved conversations
 
 Spark saves conversations on the EmberGuide server, so questions and answers
@@ -463,7 +489,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.10.1"
+version: "1.11.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -635,6 +661,14 @@ Install the development dependencies and run the test suite:
 ```bash
 bundle install
 bundle exec ruby test/run.rb
+```
+
+Successful tests suppress routine application and server logs. Failed tests
+print captured diagnostics alongside the normal failure report. To see all
+logging while debugging, run:
+
+```bash
+TEST_VERBOSE_LOGS=1 bundle exec ruby test/run.rb
 ```
 
 The suite does not contact Canvas. GitHub Actions runs it on the latest Ruby version pinned in `.ruby-version` and builds the ARM64 Home Assistant image for every push and pull request.
