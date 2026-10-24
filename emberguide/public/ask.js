@@ -385,6 +385,7 @@
     let detail = "";
 
     const paint = () => {
+      const following = isFollowing();
       const seconds = Math.round((Date.now() - started) / 1000);
       const elapsed = seconds >= 3 ? ` · ${seconds}s` : "";
       if (stage === "connecting") label.textContent = `Waking up Spark…${elapsed}`;
@@ -393,6 +394,7 @@
       else if (stage === "searching") label.textContent = `Searching the web…${elapsed}`;
       else if (stage === "reading") label.textContent = `Reading your class notes… ${detail}`;
       else label.textContent = `Writing an answer…${elapsed}`;
+      if (following) scrollToLatest();
     };
     const timer = setInterval(paint, 1000);
     paint();
@@ -559,9 +561,11 @@
       setStatus("Online", "on");
     } catch (error) {
       clearTimeout(paintTimer);
+      const following = isFollowing();
       pending.classList.remove("ask-markdown");
       pending.textContent = error.message;
       pending.classList.add("is-error");
+      if (following) scrollToLatest();
       appendSources(pending, query, sources);
       input.value = question;
       if (/offline/i.test(error.message)) setStatus("Offline", "off");

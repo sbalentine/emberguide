@@ -1,6 +1,10 @@
 require_relative "test_helper"
 
 class WebSearchTest < Minitest::Test
+  def setup
+    FileUtils.rm_f(COURSE_NAME_MAPPINGS_FILE)
+  end
+
   def search_result(text: "The Nile supported agriculture.")
     { "content" => [{ "type" => "text", "text" => "Title: Geography guide\nURL: https://example.com/geography\nHighlights:\n#{text}" }] }
   end

@@ -175,6 +175,8 @@ Choosing a question sends it to Spark, just like clicking a suggestion on deskto
 The conversation area stays hidden until the first question and hides again
 when starting a new conversation.
 Replies scroll inside the conversation instead of pushing the question box down.
+Progress updates and errors follow the bottom too, so they are not clipped
+while you type your next question.
 Spark uses simple Markdown for readable replies; common LaTeX arrow shortcuts
 are displayed as arrows, but full LaTeX math rendering is not supported.
 Scroll up in the conversation to reread earlier messages without being pulled
