@@ -59,6 +59,7 @@ module DemoData
       "BACKUP_SETTINGS_FILE" => File.join(runtime_dir, "backup_settings.json"),
       "SPARK_HISTORY_FILE" => File.join(runtime_dir, "spark_history.json"),
       "SPARK_SETTINGS_FILE" => File.join(runtime_dir, "spark_settings.json"),
+      "STUDENT_SETTINGS_FILE" => File.join(runtime_dir, "student_settings.json"),
       "DAILY_OVERVIEW_FILE" => File.join(runtime_dir, "daily_overview.json")
     }
   end

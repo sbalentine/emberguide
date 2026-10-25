@@ -3,12 +3,30 @@ require_relative "test_helper"
 class SchoolCalendarTest < Minitest::Test
   def setup
     FileUtils.rm_f(SCHOOL_CALENDAR_SETTINGS_FILE)
+    FileUtils.rm_f(ACHIEVEMENT_SETTINGS_FILE)
     $school_calendar_cache = nil
   end
 
   def teardown
     FileUtils.rm_f(SCHOOL_CALENDAR_SETTINGS_FILE)
+    FileUtils.rm_f(ACHIEVEMENT_SETTINGS_FILE)
     $school_calendar_cache = nil
+  end
+
+  def test_manual_no_school_events_merge_with_feed_and_remain_in_schedule_changes
+    save_achievement_settings(
+      80, school_day_overrides: { "2026-10-16" => "no_school" },
+      no_school_labels: { "2026-10-16" => "Family day" }
+    )
+    with_replaced_method(self, :school_calendar_snapshot, ->(**_args) {
+      { events: parse_school_calendar(calendar_body), status: :fresh }
+    }) do
+      events = school_calendar_events
+      assert_equal ["Minimum Day", "Family day", "Fall Break", "Board Meeting"], events.map { |event| event["title"] }
+      assert_equal Date.new(2026, 10, 16), events[1]["end_date"]
+      changes = upcoming_schedule_changes(events, today: Date.new(2026, 10, 14))
+      assert_includes changes.map { |event| event["title"] }, "Family day"
+    end
   end
 
   def calendar_body

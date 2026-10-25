@@ -24,7 +24,7 @@
     <header class="settings-header">
       <div>
         <h1>School Calendar</h1>
-        <div class="subtitle">Browse important dates from the configured district calendar.</div>
+        <div class="subtitle">Browse district dates and additional no-school days.</div>
       </div>
     </header>
 
@@ -64,6 +64,7 @@
             event_count_label =
               "#{day_events.length} #{day_events.length == 1 ? "event" : "events"}"
             date_label = date.strftime("%A, %B %-d, %Y")
+            date_label += ", Student's birthday" if student_birthday?(student_settings, date)
           %>
           <% if day_events.any? %>
             <button
@@ -81,6 +82,9 @@
             >
           <% end %>
             <time datetime="<%= date.iso8601 %>"><%= date.day %></time>
+            <% if student_birthday?(student_settings, date) %>
+              <span class="calendar-birthday" role="img" aria-label="Student's birthday" title="Student's birthday">🎂</span>
+            <% end %>
             <% if day_events.any? %>
               <span class="calendar-month-event-count">
                 <strong><%= day_events.length %></strong>

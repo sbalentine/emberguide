@@ -420,6 +420,17 @@ School Year Journey uses the same progress-bar styling as the badge collection.
 
 ### School calendar and year-long progress
 
+**Settings → Student** has an optional birthday month and day. No birth year or
+age is stored. Enter the birthday as `MM/DD`, for example `11/15`, with no year.
+The calendar marks that date with a birthday cake each year,
+including when browsing other months or years. February 29 is marked only in
+leap years. Leave the date blank to remove the birthday. This is a calendar
+decoration, not a school closure or a change to school-day calculations.
+
+Student settings are stored in `student_settings.json` and included in backups.
+Anyone who can access EmberGuide can view and edit them. Older supported backups
+without student settings leave the current birthday unchanged.
+
 The monthly calendar includes past events supplied by the connected feed.
 Browsing a month also shows that month's event list, including past dates;
 the default calendar page keeps the upcoming-events list. Some feeds omit
@@ -433,7 +444,14 @@ Calendar display-filter keywords do not change the school-day calculation.
 
 Open **School-Day Review** in Calendar Settings to review the dates and event titles
 used. Add no-school dates or force dates to count as school days (including makeup
-Saturdays) in Calendar Settings. Overrides take priority and are included in
+Saturdays) in Calendar Settings. Additional no-school dates accept an optional
+label: `2026-09-07 | Labor Day`, one labeled date per line (up to 120 characters
+per label). Plain dates still accept commas or whitespace. These days appear in
+the calendar and calendar-based reminders with the label, or "No school" when
+unlabeled, even without a district feed. District-event keyword filters do not
+hide manually added days. Remove a date to remove its calendar entry and return
+to automatic counting. Labels also appear in School-Day Review.
+Overrides and labels take priority and are included in
 data backups. Days before today count as completed; today remains in the count
 of days left. Totals are estimates: calendar feeds can omit closures or contain
 events for other schools. Calendar Settings flags unavailable, stale, or incomplete-range
@@ -493,7 +511,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.12.0"
+version: "1.13.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

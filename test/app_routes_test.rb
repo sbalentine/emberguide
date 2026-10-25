@@ -120,6 +120,7 @@ class AppRoutesTest < Minitest::Test
   end
 
   def setup
+    FileUtils.rm_f(STUDENT_SETTINGS_FILE)
     FileUtils.rm_f(SPARK_SETTINGS_FILE)
     FileUtils.rm_f(DAILY_OVERVIEW_FILE)
     FileUtils.rm_f(SPARK_HISTORY_FILE)
@@ -155,6 +156,40 @@ class AppRoutesTest < Minitest::Test
     $last_successful_update = Time.parse("2026-09-27T12:00:00Z")
     $last_refresh_error = nil
     $event_journal = { "next_id" => 1, "events" => [] }
+  end
+
+  def test_student_birthday_settings_and_calendar_marker
+    assert_includes request("/settings").body, 'href="/settings/student"'
+    assert_equal "200", request("/settings/student").code
+    assert_equal "405", request("/settings/student", Net::HTTP::Delete).code
+    assert_equal "404", request("/settings/student/invalid").code
+    response = request("/settings/student", Net::HTTP::Post, "birthday" => "11/15")
+    assert_equal "303", response.code
+    assert_equal "/settings/student?saved=1", URI(response["Location"]).request_uri
+    assert_includes request("/settings/student").body, 'value="11/15"'
+    assert_includes request("/settings/student").body, 'placeholder="MM/DD"'
+    assert_equal({ "birthday_month" => 11, "birthday_day" => 15 }, load_student_settings)
+    page = request("/calendar?month=2026-11").body
+    assert_match(/datetime="2026-11-15">15<\/time>\s*<span class="calendar-birthday"/, page)
+    assert_equal 1, page.scan('class="calendar-birthday"').length
+    assert_includes page.dup.force_encoding(Encoding::UTF_8), "🎂"
+    assert_includes request("/calendar?month=2027-11").body, 'class="calendar-birthday"'
+    refute_includes request("/calendar?month=2026-07").body, 'class="calendar-birthday"'
+    rejected = request("/settings/student", Net::HTTP::Post, "birthday" => "02/30")
+    assert_equal "422", rejected.code
+    assert_includes rejected.body, "Student settings not saved."
+    assert_equal 11, load_student_settings["birthday_month"]
+    %w[2026-11-15 2/9 13/01 00/15].each do |invalid|
+      assert_equal "422", request("/settings/student", Net::HTTP::Post, "birthday" => invalid).code
+      assert_equal 11, load_student_settings["birthday_month"]
+    end
+    assert_equal "303", request("/settings/student", Net::HTTP::Post, "birthday" => "02/29").code
+    assert_includes request("/calendar?month=2028-02").body, 'class="calendar-birthday"'
+    refute_includes request("/calendar?month=2027-02").body, 'class="calendar-birthday"'
+    assert_equal "303", request("/settings/student", Net::HTTP::Post, "birthday" => "").code
+    refute_includes request("/calendar?month=2026-11").body, 'class="calendar-birthday"'
+  ensure
+    FileUtils.rm_f(STUDENT_SETTINGS_FILE)
   end
 
   def test_parent_context_can_be_saved_without_a_running_spark_server
@@ -745,7 +780,8 @@ class AppRoutesTest < Minitest::Test
   def test_score_target_updates_preserve_school_year_and_overrides
     save_achievement_settings(
       80, school_year_start: "2026-09-01", school_year_end: "2027-05-31",
-      school_day_overrides: { "2026-10-16" => "no_school" }
+      school_day_overrides: { "2026-10-16" => "no_school" },
+      no_school_labels: { "2026-10-16" => "Day off" }
     )
     original = load_achievement_settings
     saved = request("/settings/achievements", Net::HTTP::Post, "strong_score_threshold" => "85")
@@ -763,6 +799,42 @@ class AppRoutesTest < Minitest::Test
     )
     assert_equal "303", feed_saved.code
     assert_equal original.merge("strong_score_threshold" => 85), load_achievement_settings
+  end
+
+  def test_labeled_no_school_dates_appear_in_calendar_without_a_feed_and_can_be_removed
+    save_school_calendar_settings("", "Labor")
+    label = "Labor Day <closed>"
+    fields = {
+      "action" => "school_year", "school_year_start" => "2026-08-12",
+      "school_year_end" => "2027-06-04",
+      "no_school_dates" => "2026-09-07 | #{label}\n2026-09-08",
+      "extra_school_dates" => "2026-09-12"
+    }
+    assert_equal "303", request("/settings/calendar", Net::HTTP::Post, fields).code
+    editor = request("/settings/calendar")
+    assert_includes editor.body, "2026-09-07 | Labor Day &lt;closed&gt;"
+    assert_includes editor.body, "<span>Labor Day &lt;closed&gt;</span>"
+    page = request("/calendar?month=2026-09")
+    assert_equal "200", page.code
+    assert_includes page.body, 'data-calendar-date="2026-09-07"'
+    assert_includes page.body, 'id="calendar-events-2026-09-07"'
+    assert_equal 2, page.body.scan("<strong>Labor Day &lt;closed&gt;</strong>").length
+    assert_equal 2, page.body.scan("<strong>No school</strong>").length
+    refute_includes page.body, "<closed>"
+    refute_includes page.body, 'data-calendar-date="2026-09-12"'
+    invalid = request(
+      "/settings/calendar", Net::HTTP::Post,
+      fields.merge("no_school_dates" => "2026-09-07 | #{"x" * 121}")
+    )
+    assert_equal "422", invalid.code
+    assert_includes invalid.body, "120 characters"
+    assert_equal({ "2026-09-07" => label }, load_achievement_settings["no_school_labels"])
+    assert_equal "303", request(
+      "/settings/calendar", Net::HTTP::Post,
+      fields.merge("no_school_dates" => "", "extra_school_dates" => "")
+    ).code
+    assert_equal({}, load_achievement_settings["no_school_labels"])
+    refute_includes request("/calendar?month=2026-09").body, 'data-calendar-date="2026-09-07"'
   end
 
   def test_achievements_show_calendar_adjustments_review_and_manual_overrides

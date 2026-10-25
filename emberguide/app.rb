@@ -24,6 +24,7 @@ end
 require_relative "lib/canvas"
 require_relative "lib/helpers"
 require_relative "lib/achievement_history"
+require_relative "lib/student_settings"
 require_relative "lib/course_name_mappings"
 require_relative "lib/grade_overrides"
 require_relative "lib/hidden_courses"
@@ -531,6 +532,48 @@ rescue Date::Error
   raise ArgumentError, "Invalid calendar month."
 end
 
+server.mount_proc "/settings/student" do |request, response|
+  unless request.path == "/settings/student" && %w[GET POST].include?(request.request_method)
+    response.status = request.path == "/settings/student" ? 405 : 404
+    response["Allow"] = "GET, POST" if response.status == 405
+    response.body = "Student settings support GET and POST only."
+    next
+  end
+  student_settings = load_student_settings
+  birthday_value = student_settings["birthday_month"] ?
+    format("%02d/%02d", student_settings["birthday_month"], student_settings["birthday_day"]) : ""
+  student_error = nil
+  if request.request_method == "POST"
+    begin
+      birthday_value = request.query["birthday"].to_s.strip
+      if birthday_value.empty?
+        student_settings = save_student_settings("", "")
+      else
+        unless birthday_value.match?(/\A\d{2}\/\d{2}\z/)
+          raise ArgumentError, "Enter a valid birthday as MM/DD, or leave it blank."
+        end
+        month, day = birthday_value.split("/")
+        student_settings = save_student_settings(month, day)
+      end
+      response.status = 303
+      response["Location"] = "/settings/student?saved=1"
+      response.body = ""
+      next
+    rescue ArgumentError, StudentSettingsError => e
+      student_error = e.message
+      response.status = 422
+    end
+  end
+  response["Content-Type"] = "text/html; charset=utf-8"
+  response["Cache-Control"] = "no-store"
+  response.body = ERB.new(File.read(File.join(APP_ROOT, "views", "student_settings.erb"))).result(binding)
+rescue StudentSettingsError => e
+  puts "Student settings error: #{e.message}"
+  response.status = 500
+  response["Content-Type"] = "text/plain; charset=utf-8"
+  response.body = e.message
+end
+
 server.mount_proc "/calendar" do |request, response|
   if request.request_method != "GET"
     response.status = 405
@@ -540,6 +583,7 @@ server.mount_proc "/calendar" do |request, response|
   end
 
   today = Date.today
+  student_settings = load_student_settings
   all_calendar_events = school_calendar_events
   calendar_month = requested_calendar_month(request.query["month"], today: today)
   calendar_month_end = (calendar_month >> 1) - 1
@@ -657,7 +701,8 @@ server.mount_proc "/settings/achievements" do |request, response|
         request.query["strong_score_threshold"],
         school_year_start: existing_settings["school_year_start"],
         school_year_end: existing_settings["school_year_end"],
-        school_day_overrides: existing_settings["school_day_overrides"]
+        school_day_overrides: existing_settings["school_day_overrides"],
+        no_school_labels: existing_settings["no_school_labels"]
       )
       response.status = 303
       response["Location"] = "/settings/achievements?saved=1"
@@ -707,7 +752,10 @@ server.mount_proc "/settings/calendar" do |request, response|
           school_year_end: request.query["school_year_end"],
           school_day_overrides: achievement_school_day_override_fields(
             request.query["no_school_dates"], request.query["extra_school_dates"]
-          )
+          ),
+          no_school_labels: achievement_no_school_entries(
+            request.query["no_school_dates"]
+          ).reject { |_day, label| label.empty? }
         )
       else
         save_school_calendar_settings(
@@ -738,7 +786,12 @@ server.mount_proc "/settings/calendar" do |request, response|
   school_year = school_year_calendar_progress(achievement_settings)
   school_year_error = calendar_error && request.query["action"] == "school_year"
   no_school_dates = school_year_error ? request.query["no_school_dates"] :
-    achievement_settings["school_day_overrides"].select { |_day, kind| kind == "no_school" }.keys.join("\n")
+    achievement_settings["school_day_overrides"].filter_map { |day, kind|
+      next unless kind == "no_school"
+
+      label = achievement_settings["no_school_labels"][day]
+      label ? "#{day} | #{label}" : day
+    }.join("\n")
   extra_school_dates = school_year_error ? request.query["extra_school_dates"] :
     achievement_settings["school_day_overrides"].select { |_day, kind| kind == "school" }.keys.join("\n")
   if school_year_error

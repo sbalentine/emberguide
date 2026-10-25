@@ -274,10 +274,13 @@ end
 
 def school_calendar_events(now: Time.now, force: false)
   snapshot = school_calendar_snapshot(now: now, force: force)
-  filter_school_calendar_events(
+  feed_events = filter_school_calendar_events(
     snapshot[:events],
     load_school_calendar_settings["excluded_keywords"]
   )
+  (feed_events + manual_no_school_calendar_events).sort_by do |event|
+    [event["start_date"], event["title"]]
+  end
 end
 
 def upcoming_school_calendar_events(events, today: Date.today, days: 30, limit: 3)

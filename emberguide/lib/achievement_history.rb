@@ -61,7 +61,8 @@ def empty_achievement_settings
     "strong_score_threshold" => DEFAULT_STRONG_SCORE_THRESHOLD,
     "school_year_start" => DEFAULT_SCHOOL_YEAR_START,
     "school_year_end" => DEFAULT_SCHOOL_YEAR_END,
-    "school_day_overrides" => {}
+    "school_day_overrides" => {},
+    "no_school_labels" => {}
   }
 end
 
@@ -76,14 +77,16 @@ def load_achievement_settings
     settings.fetch("school_year_start", DEFAULT_SCHOOL_YEAR_START),
     settings.fetch("school_year_end", DEFAULT_SCHOOL_YEAR_END)
   )
+  overrides = achievement_school_day_overrides(
+    settings.fetch("school_day_overrides", {}), school_year_start, school_year_end
+  )
   {
     "strong_score_threshold" => threshold,
     "school_year_start" => school_year_start.iso8601,
     "school_year_end" => school_year_end.iso8601,
-    "school_day_overrides" => achievement_school_day_overrides(
-      settings.fetch("school_day_overrides", {}),
-      school_year_start,
-      school_year_end
+    "school_day_overrides" => overrides,
+    "no_school_labels" => achievement_no_school_labels(
+      settings.fetch("no_school_labels", {}), overrides
     )
   }
 rescue JSON::ParserError, ArgumentError, TypeError
@@ -117,7 +120,8 @@ def save_achievement_settings(
   value,
   school_year_start: DEFAULT_SCHOOL_YEAR_START,
   school_year_end: DEFAULT_SCHOOL_YEAR_END,
-  school_day_overrides: {}
+  school_day_overrides: {},
+  no_school_labels: {}
 )
   start_date, end_date = achievement_school_year_dates(
     school_year_start,
@@ -131,6 +135,9 @@ def save_achievement_settings(
       school_day_overrides, start_date, end_date
     )
   }
+  settings["no_school_labels"] = achievement_no_school_labels(
+    no_school_labels, settings["school_day_overrides"]
+  )
   FileUtils.mkdir_p(File.dirname(ACHIEVEMENT_SETTINGS_FILE))
   temporary_file = "#{ACHIEVEMENT_SETTINGS_FILE}.tmp"
   File.write(temporary_file, JSON.pretty_generate(settings))
@@ -308,8 +315,11 @@ end
 
 def achievement_school_day_override_fields(no_school_dates, school_dates)
   overrides = {}
-  { "no_school" => no_school_dates, "school" => school_dates }.each do |kind, text|
-    text.to_s.split(/[\s,]+/).reject(&:empty?).each do |day|
+  {
+    "no_school" => achievement_no_school_entries(no_school_dates).keys,
+    "school" => school_dates.to_s.split(/[\s,]+/).reject(&:empty?)
+  }.each do |kind, days|
+    days.each do |day|
       if overrides.key?(day) && overrides[day] != kind
         raise ArgumentError, "#{day} cannot be both a school day and a no-school day."
       end
@@ -317,6 +327,54 @@ def achievement_school_day_override_fields(no_school_dates, school_dates)
     end
   end
   overrides
+end
+
+def achievement_no_school_entries(text)
+  entries = {}
+  text.to_s.each_line do |line|
+    if line.include?("|")
+      day, label = line.split("|", 2).map(&:strip)
+      unless day.match?(/\A\d{4}-\d{2}-\d{2}\z/)
+        raise ArgumentError, "Use YYYY-MM-DD | Label, one labeled date per line."
+      end
+      pairs = [[day, label]]
+    else
+      pairs = line.split(/[\s,]+/).reject(&:empty?).map { |day| [day, ""] }
+    end
+    pairs.each do |day, label|
+      if entries.key?(day) && entries[day] != label
+        raise ArgumentError, "Enter #{day} only once when using labels."
+      end
+      entries[day] = label
+    end
+  end
+  entries
+end
+
+def achievement_no_school_labels(labels, overrides)
+  valid = labels.is_a?(Hash) && labels.all? do |day, label|
+    overrides[day] == "no_school" && label.is_a?(String) &&
+      !label.strip.empty? && label.length <= 120 && !label.match?(/[\r\n|]/)
+  end
+  unless valid
+    raise ArgumentError, "No-school labels must be 1 to 120 characters, without | or line breaks, and match a no-school date."
+  end
+  labels.transform_values(&:strip).sort.to_h
+end
+
+def manual_no_school_calendar_events
+  settings = load_achievement_settings
+  settings["school_day_overrides"].filter_map do |day, kind|
+    next unless kind == "no_school"
+
+    date = Date.iso8601(day)
+    {
+      "title" => settings["no_school_labels"].fetch(day, "No school"),
+      "start_date" => date, "end_date" => date,
+      "description" => "No school. Added in Calendar settings.",
+      "location" => ""
+    }
+  end
 end
 
 def no_school_calendar_event?(event)
@@ -335,7 +393,7 @@ def no_school_calendar_event?(event)
 end
 
 def school_year_progress(
-  start_date, end_date, date: Date.today, events: [], overrides: {}
+  start_date, end_date, date: Date.today, events: [], overrides: {}, no_school_labels: {}
 )
   closure_reasons = {}
   events.each do |event|
@@ -361,7 +419,7 @@ def school_year_progress(
       excluded_days << {
         "date" => day,
         "reasons" => override == "no_school" ?
-          ["Manual no-school override"] : closure_reasons.fetch(day).uniq
+          [no_school_labels.fetch(day.iso8601, "Manual no-school override")] : closure_reasons.fetch(day).uniq
       }
     end
     is_school_day
@@ -402,7 +460,8 @@ def school_year_calendar_progress(settings, date: Date.today)
     end
   school_year_progress(
     start_date, end_date, date: date,
-    events: events, overrides: settings.fetch("school_day_overrides", {})
+    events: events, overrides: settings.fetch("school_day_overrides", {}),
+    no_school_labels: settings.fetch("no_school_labels", {})
   ).merge(
     "status" => status,
     "calendar_status" => snapshot[:status].to_s

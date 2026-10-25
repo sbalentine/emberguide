@@ -2,6 +2,7 @@ require_relative "test_helper"
 
 class EmailBackupsTest < Minitest::Test
   def setup
+    FileUtils.rm_f(STUDENT_SETTINGS_FILE)
     FileUtils.rm_f(SPARK_SETTINGS_FILE)
     FileUtils.rm_f(DAILY_OVERVIEW_FILE)
     FileUtils.rm_f(SPARK_HISTORY_FILE)
@@ -138,6 +139,7 @@ class EmailBackupsTest < Minitest::Test
       school_calendar_settings.json
       spark_history.json
       spark_settings.json
+      student_settings.json
     ]
     assert_equal expected_files, entries.keys.sort
     assert_equal "Piano", JSON.parse(entries["manual_coursework.json"]).dig(
@@ -176,7 +178,7 @@ class EmailBackupsTest < Minitest::Test
       "2027-06-04",
       JSON.parse(entries["achievement_settings.json"])["school_year_end"]
     )
-    assert_equal 6, JSON.parse(entries["manifest.json"])["schema_version"]
+    assert_equal 7, JSON.parse(entries["manifest.json"])["schema_version"]
   end
 
   def test_backup_restore_round_trip_restores_local_state
@@ -304,6 +306,29 @@ class EmailBackupsTest < Minitest::Test
     validate_backup_json("achievement_settings.json", { "strong_score_threshold" => 80 })
   end
 
+  def test_backup_restores_and_validates_no_school_labels
+    save_achievement_settings(
+      80, school_day_overrides: { "2026-09-07" => "no_school" },
+      no_school_labels: { "2026-09-07" => "Labor Day" }
+    )
+    archive = build_backup_archive
+    save_achievement_settings(80)
+    restore_backup_archive(archive)
+    assert_equal({ "2026-09-07" => "Labor Day" }, load_achievement_settings["no_school_labels"])
+    assert_raises(BackupRestoreError) do
+      validate_backup_json(
+        "achievement_settings.json",
+        load_achievement_settings.merge("no_school_labels" => { "2026-09-08" => "Unknown" })
+      )
+    end
+    assert_raises(BackupRestoreError) do
+      validate_backup_json(
+        "achievement_settings.json",
+        load_achievement_settings.merge("no_school_labels" => [])
+      )
+    end
+  end
+
   def test_backup_restore_rejects_checksum_mismatch
     entries = backup_archive_entries(build_backup_archive)
     entries["manual_coursework.json"] = backup_json(
@@ -361,6 +386,33 @@ class EmailBackupsTest < Minitest::Test
     end
   end
 
+  def test_backup_restores_birthday_and_validates_student_settings
+    save_student_settings("2", "29")
+    archive = build_backup_archive
+    save_student_settings("", "")
+    assert_includes restore_backup_archive(archive), "student_settings.json"
+    assert_equal({ "birthday_month" => 2, "birthday_day" => 29 }, load_student_settings)
+    assert_raises(BackupRestoreError) do
+      validate_backup_json("student_settings.json", "birthday_month" => 2, "birthday_day" => 30)
+    end
+  ensure
+    FileUtils.rm_f(STUDENT_SETTINGS_FILE)
+  end
+
+  def test_schema_six_restore_preserves_student_settings_not_in_the_backup
+    save_student_settings("11", "15")
+    entries = backup_archive_entries(build_backup_archive)
+    entries.delete("student_settings.json")
+    manifest = JSON.parse(entries["manifest.json"])
+    manifest["schema_version"] = 6
+    manifest["files"].delete("student_settings.json")
+    entries["manifest.json"] = backup_json(manifest)
+    refute_includes restore_backup_archive(backup_archive_from_entries(entries)), "student_settings.json"
+    assert_equal 15, load_student_settings["birthday_day"]
+  ensure
+    FileUtils.rm_f(STUDENT_SETTINGS_FILE)
+  end
+
   def test_backup_restores_parent_context_and_model
     save_spark_model("local-model", ["local-model"])
     save_spark_context("Grade 7", "1" => "Unit 2 covers proportional relationships.")
@@ -379,9 +431,11 @@ class EmailBackupsTest < Minitest::Test
     save_spark_context("Keep these notes", {})
     entries = backup_archive_entries(build_backup_archive)
     entries.delete("spark_settings.json")
+    entries.delete("student_settings.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 5
     manifest["files"].delete("spark_settings.json")
+    manifest["files"].delete("student_settings.json")
     entries["manifest.json"] = backup_json(manifest)
     refute_includes restore_backup_archive(backup_archive_from_entries(entries)), "spark_settings.json"
     assert_equal "Keep these notes", load_spark_settings["student_context"]
@@ -395,10 +449,12 @@ class EmailBackupsTest < Minitest::Test
     entries = backup_archive_entries(build_backup_archive)
     entries.delete("spark_history.json")
     entries.delete("spark_settings.json")
+    entries.delete("student_settings.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 3
     manifest["files"].delete("spark_history.json")
     manifest["files"].delete("spark_settings.json")
+    manifest["files"].delete("student_settings.json")
     entries["manifest.json"] = backup_json(manifest)
     restored = restore_backup_archive(backup_archive_from_entries(entries))
     refute_includes restored, "spark_history.json"
@@ -412,6 +468,7 @@ class EmailBackupsTest < Minitest::Test
     entries.delete("achievement_settings.json")
     entries.delete("spark_history.json")
     entries.delete("spark_settings.json")
+    entries.delete("student_settings.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 1
     manifest["files"].delete("school_calendar_settings.json")
@@ -419,6 +476,7 @@ class EmailBackupsTest < Minitest::Test
     manifest["files"].delete("achievement_settings.json")
     manifest["files"].delete("spark_history.json")
     manifest["files"].delete("spark_settings.json")
+    manifest["files"].delete("student_settings.json")
     entries["manifest.json"] = backup_json(manifest)
     save_school_calendar_settings(
       "https://calendar.example.test/current.ics"
@@ -441,12 +499,14 @@ class EmailBackupsTest < Minitest::Test
     entries.delete("achievement_settings.json")
     entries.delete("spark_history.json")
     entries.delete("spark_settings.json")
+    entries.delete("student_settings.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 2
     manifest["files"].delete("achievement_history.json")
     manifest["files"].delete("achievement_settings.json")
     manifest["files"].delete("spark_history.json")
     manifest["files"].delete("spark_settings.json")
+    manifest["files"].delete("student_settings.json")
     entries["manifest.json"] = backup_json(manifest)
     record_achievement_day(
       { "missing" => [] },

@@ -24,7 +24,7 @@ BACKUP_SETTINGS_FILE =
 BACKUP_SEND_HOUR = 3
 DIGEST_SEND_HOUR = 6
 DIGEST_OVERVIEW_TIMEOUT = 20
-BACKUP_SCHEMA_VERSION = 6
+BACKUP_SCHEMA_VERSION = 7
 BACKUP_MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 BACKUP_MAX_ENTRY_BYTES = 10 * 1024 * 1024
 BACKUP_MAX_TOTAL_BYTES = 25 * 1024 * 1024
@@ -172,7 +172,8 @@ def backup_payloads(now: Time.now)
     "school_calendar_settings.json" =>
       backup_json(load_school_calendar_settings),
     "spark_history.json" => backup_json(load_spark_history),
-    "spark_settings.json" => backup_json(load_spark_settings)
+    "spark_settings.json" => backup_json(load_spark_settings),
+    "student_settings.json" => backup_json(load_student_settings)
   }
 
   manifest = {
@@ -229,13 +230,16 @@ def backup_restore_paths
     "achievement_settings.json" => ACHIEVEMENT_SETTINGS_FILE,
     "school_calendar_settings.json" => SCHOOL_CALENDAR_SETTINGS_FILE,
     "spark_history.json" => SPARK_HISTORY_FILE,
-    "spark_settings.json" => SPARK_SETTINGS_FILE
+    "spark_settings.json" => SPARK_SETTINGS_FILE,
+    "student_settings.json" => STUDENT_SETTINGS_FILE
   }
 end
 
 def validate_backup_json(filename, value)
   valid =
     case filename
+    when "student_settings.json"
+      valid_student_settings?(value)
     when "spark_history.json"
       valid_spark_history?(value)
     when "spark_settings.json"
@@ -272,11 +276,14 @@ def validate_backup_json(filename, value)
         value.is_a?(Hash) &&
           value["strong_score_threshold"].is_a?(Integer) &&
           (60..100).cover?(value["strong_score_threshold"]) &&
-          achievement_school_day_overrides(
-            value.fetch("school_day_overrides", {}),
-            *achievement_school_year_dates(
-              value.fetch("school_year_start", DEFAULT_SCHOOL_YEAR_START),
-              value.fetch("school_year_end", DEFAULT_SCHOOL_YEAR_END)
+          achievement_no_school_labels(
+            value.fetch("no_school_labels", {}),
+            achievement_school_day_overrides(
+              value.fetch("school_day_overrides", {}),
+              *achievement_school_year_dates(
+                value.fetch("school_year_start", DEFAULT_SCHOOL_YEAR_START),
+                value.fetch("school_year_end", DEFAULT_SCHOOL_YEAR_END)
+              )
             )
           )
       rescue ArgumentError
@@ -343,7 +350,7 @@ def validated_backup_payloads(archive)
 
   manifest = JSON.parse(manifest_content)
   schema_version = manifest["schema_version"]
-  unless [1, 2, 3, 5, BACKUP_SCHEMA_VERSION].include?(schema_version)
+  unless [1, 2, 3, 5, 6, BACKUP_SCHEMA_VERSION].include?(schema_version)
     raise BackupRestoreError, "This backup version is not supported."
   end
   Time.iso8601(manifest.fetch("created_at"))
@@ -367,6 +374,7 @@ def validated_backup_payloads(archive)
       backup_restore_paths.keys
     end
     expected_files -= ["spark_settings.json"] if schema_version < 6
+    expected_files -= ["student_settings.json"] if schema_version < 7
     unless entries.keys.sort == expected_files.sort
     raise BackupRestoreError, "The backup file list is incomplete or invalid."
   end
@@ -471,7 +479,7 @@ def restore_backup_archive(archive)
         $daily_overview_generation_mutex.synchronize do
           SPARK_SETTINGS_MUTEX.synchronize do
             clear_daily_overview_cache
-            write_restored_payloads(payloads)
+            STUDENT_SETTINGS_MUTEX.synchronize { write_restored_payloads(payloads) }
             apply_restored_runtime_state(payloads)
             $ai_default_model = nil
           end

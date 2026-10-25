@@ -308,6 +308,39 @@ class AchievementHistoryTest < Minitest::Test
       with_replaced_method(self, :school_calendar_snapshot, -> { { events: [], status: status } }) do
         assert_includes school_year_calendar_progress(settings)["status"], message
       end
+
+      def test_no_school_labels_validate_and_round_trip_without_changing_counts
+        text = "2026-09-07 | Labor Day\n2026-10-16, 2026-10-19"
+        entries = achievement_no_school_entries(text)
+        labels = entries.reject { |_day, label| label.empty? }
+        overrides = achievement_school_day_override_fields(text, "2026-10-17")
+        save_achievement_settings(80, school_day_overrides: overrides, no_school_labels: labels)
+        assert_equal({ "2026-09-07" => "Labor Day" }, load_achievement_settings["no_school_labels"])
+        progress = school_year_progress(
+          Date.new(2026, 9, 7), Date.new(2026, 9, 11),
+          overrides: overrides, no_school_labels: labels
+        )
+        assert_equal 4, progress["total"]
+        assert_equal ["Labor Day"], progress["excluded_days"].first["reasons"]
+        [
+          [], { "2026-10-17" => "School day" }, { "2026-09-07" => 42 },
+          { "2026-09-07" => " " }, { "2026-09-07" => "x" * 121 },
+          { "2026-09-07" => "a\nb" }, { "2026-09-07" => "a|b" }
+        ].each do |invalid|
+          assert_raises(ArgumentError) do
+            save_achievement_settings(80, school_day_overrides: overrides, no_school_labels: invalid)
+          end
+          assert_equal labels, load_achievement_settings["no_school_labels"]
+        end
+        assert_raises(ArgumentError) do
+          achievement_no_school_entries("2026-09-07 | Labor Day\n2026-09-07 | Other")
+        end
+        assert_raises(ArgumentError) do
+          achievement_no_school_entries("2026-09-07, 2026-10-16 | Holiday")
+        end
+        File.write(ACHIEVEMENT_SETTINGS_FILE, JSON.generate("strong_score_threshold" => 80))
+        assert_equal({}, load_achievement_settings["no_school_labels"])
+      end
     end
     events = [
       calendar_event("First Day", "2026-08-12"),

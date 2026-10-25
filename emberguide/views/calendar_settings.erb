@@ -106,7 +106,9 @@
         </div>
         <h2 class="calendar-settings-subheading">School-Day Overrides</h2>
         <p class="settings-intro">
-          Enter one YYYY-MM-DD date per line (commas also work), within the school year.
+          Enter one YYYY-MM-DD date per line, within the school year.
+          For no-school dates, add an optional label after a |, such as
+          <code>2026-09-07 | Labor Day</code>. Unlabeled dates can also be comma-separated.
           Overrides take priority over the calendar. Remove a date to return to
           automatic counting. These settings are included in backups.
         </p>
@@ -114,7 +116,11 @@
         <label>
           <span>Additional no-school dates</span>
           <textarea name="no_school_dates" rows="4"><%= h no_school_dates %></textarea>
-          <small>For unlisted holidays, closures, or days off.</small>
+          <small>
+            For unlisted holidays, closures, or days off. These appear on the
+            calendar with your label, or "No school" if no label is entered.
+            Labels can be up to 120 characters.
+          </small>
         </label>
         <label>
           <span>School-day dates to include</span>
@@ -167,7 +173,7 @@
             <% achievement_settings["school_day_overrides"].each do |day, kind| %>
               <li>
                 <time datetime="<%= h day %>"><%= h day %></time>
-                <span><%= kind == "school" ? "Count as a school day" : "No school" %></span>
+                <span><%= h(kind == "school" ? "Count as a school day" : achievement_settings["no_school_labels"].fetch(day, "No school")) %></span>
               </li>
             <% end %>
           </ul>

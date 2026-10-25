@@ -2013,6 +2013,8 @@ button.calendar-month-day[aria-expanded="true"] {
   box-shadow: 0 0 12px rgba(255, 201, 107, 0.5);
 }
 
+.calendar-birthday { display: block; font-size: 20px; line-height: 1.4; }
+
 .calendar-month-event-count {
   display: block;
   margin-top: 8px;
