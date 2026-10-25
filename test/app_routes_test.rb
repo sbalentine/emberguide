@@ -657,6 +657,11 @@ class AppRoutesTest < Minitest::Test
     assert_includes achievements.body, "School Year Journey"
     assert_includes achievements.body, "Badge Collection"
     assert_equal 20, achievements.body.scan('class="card collectible-badge ').length
+    assert_equal(
+      %w[Common Rare Epic Legend] * 5,
+      achievements.body.scan(/<small>(Common|Rare|Epic|Legend)<\/small>/).flatten
+    )
+    refute_match(/class="badge-emblem" aria-hidden/, achievements.body)
     assert_includes achievements.body, "is-locked"
     refute_includes achievements.body, 'aria-label="School year progress"'
     refute_match(/<strong>\d+% complete<\/strong>/, achievements.body)

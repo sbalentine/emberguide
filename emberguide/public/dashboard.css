@@ -2258,29 +2258,35 @@ button.calendar-month-day[aria-expanded="true"] {
 }
 
 .badge-emblem {
-  position: relative;
   display: grid;
+  grid-template-rows: 1fr auto;
   place-items: center;
-  width: 76px;
-  height: 84px;
+  gap: 2px;
+  width: 104px;
+  height: 104px;
+  padding: 8px 0 12px;
   margin-bottom: 18px;
   border: 2px solid currentColor;
-  border-radius: 24px 24px 38px 38px;
+  border-radius: 28px 28px 44px 44px;
   color: #a5a2b7;
   background: rgba(165, 162, 183, 0.06);
 }
 
 .badge-emblem > span {
   font-size: 30px;
+  line-height: 1;
 }
 
 .badge-emblem small {
-  position: absolute;
-  bottom: -8px;
-  padding: 2px 9px;
+  padding: 3px 6px;
   border-radius: 999px;
   background: var(--bg);
+  font-size: 10px;
   font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .is-locked .badge-emblem {
@@ -2301,15 +2307,20 @@ button.calendar-month-day[aria-expanded="true"] {
   --badge-color: #67d9b2;
 }
 
-.is-earned.badge-tier-2 { --badge-color: #87b9ff; }
-.is-earned.badge-tier-3 { --badge-color: #c29aff; }
-.is-earned.badge-tier-4 { --badge-color: #ffd17a; }
+.is-earned.badge-tier-2 { --badge-color: #87b9ff; --badge-sheen-delay: 0.6s; }
+.is-earned.badge-tier-3 { --badge-color: #c29aff; --badge-sheen-delay: 1.2s; }
+.is-earned.badge-tier-4 { --badge-color: #ffd17a; --badge-sheen-delay: 1.8s; }
 
 .collectible-badge.is-earned {
   border: 1px solid var(--badge-color);
-  background: linear-gradient(145deg,
-    color-mix(in srgb, var(--badge-color) 25%, #161121), #161121 80%);
-  box-shadow: 0 4px 24px color-mix(in srgb, var(--badge-color) 12%, transparent);
+  background:
+    radial-gradient(ellipse at 50% 0%,
+      color-mix(in srgb, var(--badge-color) 14%, transparent), transparent 65%),
+    linear-gradient(145deg,
+      color-mix(in srgb, var(--badge-color) 20%, #161121), #161121 80%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 4px 24px color-mix(in srgb, var(--badge-color) 12%, transparent);
 }
 
 .collectible-badge.is-earned .achievement-label,
@@ -2318,9 +2329,65 @@ button.calendar-month-day[aria-expanded="true"] {
 }
 
 .is-earned .badge-emblem {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   color: var(--badge-color);
-  background: color-mix(in srgb, var(--badge-color) 14%, transparent);
-  box-shadow: 0 0 24px color-mix(in srgb, var(--badge-color) 18%, transparent);
+  border-color: transparent;
+  background:
+    radial-gradient(ellipse at 25% 0%, rgba(255, 255, 255, 0.3), transparent 65%) padding-box,
+    linear-gradient(155deg,
+      color-mix(in srgb, var(--badge-color) 50%, #151321),
+      color-mix(in srgb, var(--badge-color) 16%, #151321) 60%,
+      color-mix(in srgb, var(--badge-color) 30%, #151321)) padding-box,
+    linear-gradient(150deg,
+      color-mix(in srgb, var(--badge-color) 50%, white),
+      var(--badge-color) 40%,
+      color-mix(in srgb, var(--badge-color) 45%, #151321) 70%,
+      var(--badge-color)) border-box;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -5px 12px rgba(0, 0, 0, 0.35),
+    0 8px 16px rgba(0, 0, 0, 0.3),
+    0 0 28px color-mix(in srgb, var(--badge-color) 22%, transparent);
+}
+
+.is-earned .badge-emblem::before,
+.is-earned .badge-emblem::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+}
+
+.is-earned .badge-emblem::before {
+  inset: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 22px 22px 38px 38px;
+}
+
+.is-earned .badge-emblem::after {
+  inset: 0;
+  background: linear-gradient(110deg,
+    transparent 25%, rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-140%);
+  animation: perfect-score-shimmer 7s ease-out var(--badge-sheen-delay, 0s) infinite both;
+}
+
+.is-earned .badge-emblem > span {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+
+.is-earned .badge-emblem small {
+  background: rgba(8, 7, 17, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: color-mix(in srgb, var(--badge-color) 65%, white);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-earned .badge-emblem::after {
+    animation: none;
+  }
 }
 
 .collectible-badge progress,

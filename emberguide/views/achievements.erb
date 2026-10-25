@@ -142,9 +142,9 @@
           <div class="badge-grid">
             <% group["badges"].each_with_index do |badge, index| %>
               <article class="card collectible-badge <%= badge["earned_on"] ? "is-earned" : "is-locked" %> badge-tier-<%= index + 1 %>">
-                <div class="badge-emblem" aria-hidden="true">
-                  <span><%= group["icon"] %></span>
-                  <small><%= index + 1 %></small>
+                <div class="badge-emblem">
+                  <span aria-hidden="true"><%= group["icon"] %></span>
+                  <small><%= %w[Common Rare Epic Legend].fetch(index) %></small>
                 </div>
                 <span class="achievement-label"><%= badge["earned_on"] ? "Unlocked" : "Locked" %></span>
                 <h4><%= h badge["name"] %></h4>

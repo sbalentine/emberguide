@@ -409,7 +409,11 @@ Collect **20 permanent badges** across these five categories:
 Earn playful titles like **Deadline Ninja**, **Supernova**, **Halfway Hero**,
 and **Legend of the Backpack**. Locked badges are gray with progress toward
 their goals; earned badges light up in mint, blue, lavender, and gold by tier,
-with colorful backgrounds, borders, and glowing emblems. Unlocked badges
+with colorful backgrounds and polished enamel emblems, beveled rims, and a
+subtle staggered sheen. Reduced-motion preferences disable the animated sheen.
+Rarity labels stay inside each emblem below the icon: **Common**, **Rare**,
+**Epic**, and **Legend**, matching the mint, blue, lavender, and gold tiers.
+Unlocked badges
 stay collected even when a streak resets or settings change. Badges unlock from
 the progress observed when opening Achievements (not reconstructed past streaks).
 Collection dates and earned badges are included in data backups.
@@ -511,7 +515,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.13.0"
+version: "1.13.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
