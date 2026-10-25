@@ -2079,8 +2079,15 @@ button.calendar-month-day[aria-expanded="true"] {
   gap: 16px;
 }
 
+.achievement-grid,
+.achievement-milestone-grid { align-items: stretch; }
+
 .achievement-card {
   position: relative;
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 7;
+  row-gap: 0;
   overflow: hidden;
   min-width: 0;
 }
@@ -2201,16 +2208,11 @@ button.calendar-month-day[aria-expanded="true"] {
   line-height: 1.5;
 }
 
-.achievement-milestone-card progress {
-  width: 100%;
-  height: 8px;
-  margin-top: 18px;
-  overflow: hidden;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(133, 131, 255, 0.14);
-  accent-color: var(--accent);
-}
+.achievement-streak-progress { display: grid; grid-template-rows: subgrid; grid-row: span 3; padding-top: 18px; row-gap: 0; }
+.achievement-streak-progress progress { align-self: start; }
+.achievement-milestone-card { display: grid; grid-template-rows: subgrid; grid-row: span 7; row-gap: 0; }
+.achievement-milestone-card:first-child > .achievement-streak-progress { grid-row: 5 / span 3; }
+.achievement-streak-progress progress { margin-top: 10px; }
 
 .badge-collection {
   margin-top: 32px;
@@ -2319,7 +2321,9 @@ button.calendar-month-day[aria-expanded="true"] {
   box-shadow: 0 0 24px color-mix(in srgb, var(--badge-color) 18%, transparent);
 }
 
-.collectible-badge progress {
+.collectible-badge progress,
+.achievement-milestone-card progress,
+.achievement-streak-progress progress {
   width: 100%;
   height: 6px;
   margin-bottom: 8px;

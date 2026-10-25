@@ -46,6 +46,8 @@
         <p>
           Consecutive due assignments submitted without a late or missing mark.
         </p>
+        <% streak_group = achievement_badge_groups.find { |group| group["id"] == "on_time" } %>
+        <%= render_partial("streak_progress", binding) %>
       </article>
 
       <article class="card achievement-card achievement-card-clear">
@@ -65,6 +67,8 @@
             Clear the missing-work list to begin the next streak.
           <% end %>
         </p>
+        <% streak_group = achievement_badge_groups.find { |group| group["id"] == "no_missing" } %>
+        <%= render_partial("streak_progress", binding) %>
       </article>
 
       <article class="card achievement-card achievement-card-scores">
@@ -80,6 +84,8 @@
         <p>
           Consecutive graded assignments at <%= strong_score_threshold %>% or higher.
         </p>
+        <% streak_group = achievement_badge_groups.find { |group| group["id"] == "strong_scores" } %>
+        <%= render_partial("streak_progress", binding) %>
       </article>
     </section>
 
@@ -100,31 +106,23 @@
           <p>
             Every visible graded assignment adds to this year-long total.
           </p>
+          <% streak_group = achievement_badge_groups.find { |group| group["id"] == "graded_assignments" } %>
+          <%= render_partial("streak_progress", binding) %>
         </article>
 
         <article class="card achievement-milestone-card">
-          <span class="achievement-icon" aria-hidden="true">⌁</span>
+          <span class="achievement-icon" aria-hidden="true">🧭</span>
           <div class="achievement-value">
             <strong><%= achievement_milestones.dig("school_year", "completed") %></strong>
             <span>of <%= achievement_milestones.dig("school_year", "total") %> school days</span>
           </div>
           <h3>School Year Journey</h3>
-          <%
-            school_year_total = achievement_milestones.dig("school_year", "total")
-            school_year_percent = school_year_total.positive? ?
-              (100.0 * achievement_milestones.dig("school_year", "completed") / school_year_total).round : 0
-          %>
           <p>
             <strong><%= achievement_milestones.dig("school_year", "remaining") %></strong>
             school days remain through <%= school_year_end.strftime("%B %-d") %>.
           </p>
-          <progress
-            value="<%= achievement_milestones.dig("school_year", "completed") %>"
-            max="<%= [achievement_milestones.dig("school_year", "total"), 1].max %>"
-            aria-label="School year progress"
-            aria-valuetext="<%= school_year_percent %>% complete"
-          ></progress>
-          <p><strong><%= school_year_percent %>% complete</strong></p>
+          <% streak_group = achievement_badge_groups.find { |group| group["id"] == "school_year" } %>
+          <%= render_partial("streak_progress", binding) %>
         </article>
       </div>
     </section>

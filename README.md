@@ -413,6 +413,10 @@ with colorful backgrounds, borders, and glowing emblems. Unlocked badges
 stay collected even when a streak resets or settings change. Badges unlock from
 the progress observed when opening Achievements (not reconstructed past streaks).
 Collection dates and earned badges are included in data backups.
+Each current streak and milestone shows its next uncollected badge and progress toward that
+goal. Reset streaks use their current count without losing collected badges;
+collecting every badge in a group shows a completion message instead.
+School Year Journey uses the same progress-bar styling as the badge collection.
 
 ### School calendar and year-long progress
 
@@ -489,7 +493,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.11.0"
+version: "1.12.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

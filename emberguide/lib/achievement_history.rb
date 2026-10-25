@@ -46,7 +46,7 @@ ACHIEVEMENT_BADGE_GROUPS = [
     "names" => ["Quest Accepted", "Quest Collector", "Century Club", "Legend of the Backpack"]
   },
   {
-    "id" => "school_year", "title" => "School Year Journey", "icon" => "⌁",
+    "id" => "school_year", "title" => "School Year Journey", "icon" => "🧭",
     "unit" => "% of the school year completed", "goals" => [25, 50, 75, 100],
     "names" => ["Off to Adventure", "Halfway Hero", "Final Stretch", "School Year Conqueror"]
   }

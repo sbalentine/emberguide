@@ -616,14 +616,15 @@ class AppRoutesTest < Minitest::Test
     assert_includes achievements.body, "On-Time Run"
     assert_includes achievements.body, "Clear Slate"
     assert_includes achievements.body, "Strong Score Streak"
+    assert_equal 5, achievements.body.scan('class="achievement-streak-progress"').length
     assert_includes achievements.body, "Milestones"
     assert_includes achievements.body, "Work Completed"
     assert_includes achievements.body, "School Year Journey"
     assert_includes achievements.body, "Badge Collection"
     assert_equal 20, achievements.body.scan('class="card collectible-badge ').length
     assert_includes achievements.body, "is-locked"
-    assert_match(/aria-valuetext="\d+% complete"/, achievements.body)
-    assert_match(/<strong>\d+% complete<\/strong>/, achievements.body)
+    refute_includes achievements.body, 'aria-label="School year progress"'
+    refute_match(/<strong>\d+% complete<\/strong>/, achievements.body)
     assert_includes achievements.body, 'class="is-active" href="/achievements"'
     assert_equal "200", achievement_settings.code
     assert_includes achievement_settings.body, "<title>Achievement Settings</title>"

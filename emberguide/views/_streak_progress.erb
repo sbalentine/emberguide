@@ -1,0 +1,11 @@
+<div class="achievement-streak-progress">
+  <% next_badge = streak_group["badges"].find { |badge| !badge["earned_on"] } %>
+  <% if next_badge %>
+    <p>Next badge: <strong><%= h next_badge["name"] %></strong></p>
+    <progress value="<%= next_badge["progress"] %>" max="<%= next_badge["goal"] %>"
+      aria-label="<%= h streak_group["title"] %>: <%= h next_badge["name"] %> progress"></progress>
+    <p><%= next_badge["progress"].floor %><%= "%" if streak_group["id"] == "school_year" %> / <%= next_badge["goal"] %><%= streak_group["id"] == "school_year" ? "% of the school year completed" : " #{h streak_group["unit"]}" %></p>
+  <% else %>
+    <p><strong>All badges collected!</strong></p>
+  <% end %>
+</div>
