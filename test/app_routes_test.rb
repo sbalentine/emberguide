@@ -1172,6 +1172,11 @@ class AppRoutesTest < Minitest::Test
       page = request("/settings/emails?generated=overview")
       assert_includes page.body, "No email was sent"
       assert_includes page.body, "Generate Overview Now"
+      assert_includes page.body, 'id="overview-generation-status"'
+      assert_includes page.body, 'aria-live="polite" hidden'
+      assert_includes page.body, '<progress aria-label="Generating Spark overview">'
+      assert_includes page.body, "Generating overview..."
+      assert_includes page.body, "No email is being sent."
       assert_includes page.body, "Prepared"
       response = request("/settings/emails", Net::HTTP::Post, "action" => "save")
       assert_equal "303", response.code
@@ -1190,7 +1195,49 @@ class AppRoutesTest < Minitest::Test
         "action" => "generate_overview", "digest_spark_overview" => "true")
       assert_equal "422", response.code
       assert_includes response.body, "Overview not generated"
+      alert = response.body[/<div class="backup-message error".*?<\/div>/m]
+      assert_includes alert, "offline"
       assert_includes request("/settings/emails/digest-preview").body, "normal saved school details"
+    end
+  end
+
+  def test_failed_overview_refresh_displays_escaped_reason_even_when_a_valid_preview_exists
+    app = TOPLEVEL_BINDING.eval("self")
+    with_replaced_method(app, :digest_spark_overview, ->(*) { { "bullets" => ["Existing saved overview."] } }) do
+      assert_equal "303", request("/settings/emails", Net::HTTP::Post,
+        "action" => "generate_overview", "digest_spark_overview" => "true").code
+    end
+    with_replaced_method(app, :digest_spark_overview, ->(*) { { "error" => "Model <study> & notes exceed the context limit." } }) do
+      response = request("/settings/emails", Net::HTTP::Post,
+        "action" => "generate_overview", "digest_spark_overview" => "true")
+      assert_equal "422", response.code
+      alert = response.body[/<div class="backup-message error".*?<\/div>/m]
+      assert_includes alert, "Model &lt;study&gt; &amp; notes exceed the context limit."
+      refute_includes alert, "<study>"
+    end
+    assert_includes request("/settings/emails/digest-preview").body, "Existing saved overview."
+  end
+
+  def test_manual_overview_generation_reports_an_existing_generation
+    $daily_overview_generation_mutex.lock
+    response = request("/settings/emails", Net::HTTP::Post,
+      "action" => "generate_overview", "digest_spark_overview" => "true")
+    assert_equal "422", response.code
+    assert_includes response.body, "An overview is already being generated."
+    assert $daily_overview_generation_mutex.owned?
+  ensure
+    $daily_overview_generation_mutex.unlock
+  end
+
+  def test_unexpected_overview_failure_reports_generation_not_gmail_settings
+    app = TOPLEVEL_BINDING.eval("self")
+    with_replaced_method(app, :digest_spark_overview, ->(*) { raise "Unexpected model failure" }) do
+      response = request("/settings/emails", Net::HTTP::Post,
+        "action" => "generate_overview", "digest_spark_overview" => "true")
+      assert_equal "502", response.code
+      alert = response.body[/<div class="backup-message error".*?<\/div>/m]
+      assert_includes alert, "Unable to generate the overview."
+      refute_includes alert, "Gmail"
     end
   end
 

@@ -515,7 +515,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.13.1"
+version: "1.13.2"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
@@ -782,7 +782,10 @@ included in backups; the opt-in preference is. The worker catches up after a
 restore as well: restoring a backup invalidates the derived overview so it cannot
 describe a different saved dataset. It also catches up after a
 restart later than 5:00 AM and allows three attempts per day, at least 20 minutes
-apart. Each local-model generation has a 20-second total limit. Preview and email
+apart. Each local-model generation allows up to 15 minutes for a server response,
+with a 20-minute total limit to accommodate model loading and processing the
+saved class context. Generation failures log the reason without logging malformed
+model output. Preview and email
 delivery only read the cache; they never wait for the model. All recipients use
 the same prepared overview.
 
@@ -790,11 +793,18 @@ The overview shows when it was prepared and when its Canvas data was refreshed.
 The detailed email sections still use current saved data, which may have changed
 since preparation. Only a result for today's local date is eligible: yesterday's
 summary is never reused as today's. If today's overview is missing, invalid, or
-unavailable, a notice appears and the normal digest still sends. Use **Generate
+unavailable, a notice appears and the normal digest still sends. Generation and
+cache failure reasons appear in both HTML and plain-text emails; malformed model
+output and invalid server-address details are not included. Older cached failures
+may have only a generic notice until generation is retried. Use **Generate
 Overview Now** to prepare or refresh today's cache without sending an email,
 including before 5:00 AM or after automatic retries are exhausted. A failed
 refresh preserves any valid overview already prepared for today. The setting is
 off by default and does not change existing email schedules.
+
+Manual generation shows a running indicator and disables duplicate submissions
+while Spark works. When generation fails, the settings page displays the specific
+failure reason; an existing successful overview remains available for preview.
 
 Use **Restore Backup** under **Settings → Data Backup** to validate and import a
 downloaded ZIP.

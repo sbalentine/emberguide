@@ -23,7 +23,8 @@ BACKUP_SETTINGS_FILE =
 
 BACKUP_SEND_HOUR = 3
 DIGEST_SEND_HOUR = 6
-DIGEST_OVERVIEW_TIMEOUT = 20
+DIGEST_OVERVIEW_TIMEOUT = 20 * 60
+DIGEST_OVERVIEW_READ_TIMEOUT = 15 * 60
 BACKUP_SCHEMA_VERSION = 7
 BACKUP_MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 BACKUP_MAX_ENTRY_BYTES = 10 * 1024 * 1024
@@ -705,7 +706,7 @@ def digest_spark_overview(digest, now)
       [{ "role" => "user", "content" => "Summarize today's school outlook and the most useful priorities from the supplied saved data." }],
       system_prompt: prompt,
       max_tokens: 400,
-      read_timeout: 15,
+      read_timeout: DIGEST_OVERVIEW_READ_TIMEOUT,
       response_format: { "type" => "json_object" }
     )
     result = JSON.parse(answer)
@@ -717,8 +718,13 @@ def digest_spark_overview(digest, now)
     { "bullets" => bullets.map(&:strip) }
   end
 rescue AiUnavailable, JSON::ParserError, URI::InvalidURIError => e
-  puts "Daily Spark overview unavailable (#{e.class}); no summary was generated."
-  { "error" => "Spark's overview is unavailable. The normal saved school details are included below." }
+  reason = case e
+           when JSON::ParserError then "Spark returned invalid JSON."
+           when URI::InvalidURIError then "Spark's server address is invalid. Check the Spark configuration."
+           else e.message
+           end
+  puts "Daily Spark overview unavailable (#{e.class}): #{reason}; no summary was generated."
+  { "error" => reason }
 end
 
 def valid_digest_overview_bullets?(bullets)

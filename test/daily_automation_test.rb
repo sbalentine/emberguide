@@ -114,8 +114,33 @@ class DailyAutomationTest < Minitest::Test
     $daily_overview_generation_mutex.unlock
   end
 
+  def test_manual_failure_raises_the_reason_after_saving_it_and_preserves_a_valid_overview
+    prepare_overview
+    with_replaced_method(self, :digest_spark_overview, ->(*) { { "error" => "Spark is offline." } }) do
+      error = assert_raises(DailyAutomationError) do
+        generate_daily_overview(now: @now, force: true, raise_on_error: true)
+      end
+      assert_equal "Spark is offline.", error.message
+    end
+    assert_equal "Spark is offline.", load_daily_overview_state["error"]
+    assert_equal successful_overview["bullets"], daily_overview_for_digest(now: @now)["bullets"]
+    refute $daily_overview_generation_mutex.locked?
+  end
+
+  def test_manual_concurrent_generation_reports_running_without_unlocking_the_other_request
+    $daily_overview_generation_mutex.lock
+    error = assert_raises(DailyAutomationError) do
+      generate_daily_overview(now: @now, force: true, raise_on_error: true)
+    end
+    assert_includes error.message, "already being generated"
+    assert $daily_overview_generation_mutex.owned?
+  ensure
+    $daily_overview_generation_mutex.unlock
+  end
+
   def test_corrupt_or_invalid_cache_shows_a_notice_and_can_be_regenerated_manually
-    ['not JSON', '{"date":"2026-10-26","attempts":1,"attempted_at":{}}'].each do |contents|
+    ['not JSON', '{"date":"2026-10-26","attempts":1,"attempted_at":{}}',
+     JSON.generate("date" => "2026-10-26", "attempts" => 1, "attempted_at" => @now.iso8601, "error" => {})].each do |contents|
       File.write(DAILY_OVERVIEW_FILE, contents)
       capture_io do
         assert daily_overview_for_digest(now: @now)["error"]
@@ -148,7 +173,7 @@ class DailyAutomationTest < Minitest::Test
   def test_generation_requests_bounded_structured_output_and_reuses_spark_safeguards
     with_replaced_method(self, :ai_enabled?, -> { true }) do
       request = lambda do |_data, messages, **options|
-        assert_equal 15, options[:read_timeout]
+        assert_equal 15 * 60, options[:read_timeout]
         assert_equal 400, options[:max_tokens]
         assert_equal({ "type" => "json_object" }, options[:response_format])
         assert_includes options[:system_prompt], "not from today's next occurrence"
@@ -180,7 +205,7 @@ class DailyAutomationTest < Minitest::Test
   def test_total_timeout_is_bounded_and_offline_does_not_fail_digest_data
     with_replaced_method(self, :ai_enabled?, -> { true }) do
       timeout = lambda do |seconds, error_class, message, &_block|
-        assert_equal 20, seconds
+        assert_equal 20 * 60, seconds
         raise error_class, message
       end
       with_replaced_method(Timeout, :timeout, timeout) do
@@ -188,7 +213,84 @@ class DailyAutomationTest < Minitest::Test
       end
     end
     with_replaced_method(self, :ai_ask, ->(*) { flunk "Digest invoked AI" }) do
-      assert digest_data(now: @now)["spark_overview"]["error"]
+      assert_includes digest_data(now: @now)["spark_overview"]["error"], "Spark's daily overview timed out."
+    end
+  end
+
+  def test_generation_logs_the_failure_reason
+    with_replaced_method(self, :ai_enabled?, -> { true }) do
+      with_replaced_method(self, :ai_ask, ->(*) { raise AiUnavailable, "Spark's daily overview timed out." }) do
+        output, = capture_io do
+          assert digest_spark_overview(digest_data(now: @now, include_overview: false), @now)["error"]
+        end
+        assert_includes output, "Spark's daily overview timed out."
+      end
+    end
+  end
+
+  def test_invalid_json_logging_does_not_include_model_output
+    with_replaced_method(self, :ai_enabled?, -> { true }) do
+      with_replaced_method(self, :ai_ask, ->(*) { "private school details, not JSON" }) do
+        output, = capture_io do
+          refute generate_daily_overview(now: @now)
+        end
+        assert_includes output, "Spark returned invalid JSON."
+        refute_includes output, "private school details"
+        digest = digest_data(now: @now)
+        [digest_text_body(digest, @now), digest_html_body(digest, @now)].each do |body|
+          assert_includes body, "Spark returned invalid JSON."
+          refute_includes body, "private school details"
+        end
+      end
+    end
+  end
+
+  def test_generation_failure_reasons_survive_the_cache_and_render_in_both_email_formats
+    reasons = [
+      "Spark's daily overview timed out.",
+      "Spark is offline. Make sure the gaming PC is on and llama-server is running.",
+      "The model <study> & its class notes exceed the context limit."
+    ]
+    with_replaced_method(self, :ai_enabled?, -> { true }) do
+      reasons.each do |reason|
+        with_replaced_method(self, :ai_ask, ->(*) { raise AiUnavailable, reason }) do
+          capture_io { refute generate_daily_overview(now: @now, force: true) }
+        end
+        assert_includes load_daily_overview_state["error"], reason
+        with_replaced_method(self, :ai_ask, ->(*) { flunk "Email rendering invoked AI" }) do
+          digest = digest_data(now: @now)
+          assert_includes digest_text_body(digest, @now), reason
+          html = digest_html_body(digest, @now)
+          assert_includes html, CGI.escapeHTML(reason)
+          refute_includes html, "<study>"
+          assert_includes html, "Current Grade Snapshot"
+        end
+      end
+    end
+  end
+
+  def test_invalid_server_address_reason_does_not_expose_configuration
+    with_replaced_method(self, :ai_enabled?, -> { true }) do
+      with_replaced_method(self, :ai_ask, ->(*) { raise URI::InvalidURIError, "bad URI with private-api-key" }) do
+        output, = capture_io { refute generate_daily_overview(now: @now) }
+        assert_includes output, "Spark's server address is invalid."
+        refute_includes output, "private-api-key"
+      end
+    end
+    digest = digest_data(now: @now)
+    [digest_text_body(digest, @now), digest_html_body(digest, @now)].each do |body|
+      assert_includes body, "server address is invalid."
+      refute_includes body, "private-api-key"
+    end
+  end
+
+  def test_cache_failure_reason_is_included_in_both_email_formats
+    File.write(DAILY_OVERVIEW_FILE, "not JSON")
+    capture_io do
+      digest = digest_data(now: @now)
+      [digest_text_body(digest, @now), digest_html_body(digest, @now)].each do |body|
+        assert_includes body, "Unable to read the daily overview cache (JSON::ParserError)."
+      end
     end
   end
 end

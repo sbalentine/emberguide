@@ -175,6 +175,7 @@
             type="submit"
             name="action"
             value="generate_overview"
+            aria-describedby="overview-generation-status"
           >
             Generate Overview Now
           </button>
@@ -196,6 +197,15 @@
             Send Daily Digest Now
           </button>
         </div>
+        <div id="overview-generation-status" class="backup-message" role="status" aria-live="polite" hidden>
+          <strong>Generating Spark overview...</strong>
+          <progress aria-label="Generating Spark overview"></progress>
+          <p>
+            Spark is processing the saved school data. This may take several minutes
+            (up to <%= DIGEST_OVERVIEW_TIMEOUT / 60 %> minutes). Keep this page open.
+            No email is being sent.
+          </p>
+        </div>
       </section>
 
       <div class="settings-actions">
@@ -206,5 +216,44 @@
       </div>
     </form>
   </main>
+  <script>
+    const emailForm = document.querySelector(".scheduled-email-settings");
+    const overviewButton = emailForm.querySelector('button[value="generate_overview"]');
+    const overviewStatus = document.getElementById("overview-generation-status");
+    const submitButtons = Array.from(emailForm.querySelectorAll('button[type="submit"]'));
+    const disabledStates = submitButtons.map((button) => button.disabled);
+    const overviewButtonLabel = overviewButton.textContent;
+    let overviewAction = null;
+
+    emailForm.addEventListener("submit", (event) => {
+      if (overviewAction) {
+        event.preventDefault();
+        return;
+      }
+      if (event.submitter !== overviewButton) return;
+
+      // Disabled submit buttons are omitted from the native form submission.
+      overviewAction = document.createElement("input");
+      overviewAction.type = "hidden";
+      overviewAction.name = "action";
+      overviewAction.value = "generate_overview";
+      emailForm.append(overviewAction);
+      submitButtons.forEach((button) => { button.disabled = true; });
+      overviewButton.textContent = "Generating overview...";
+      overviewButton.setAttribute("aria-busy", "true");
+      overviewStatus.hidden = false;
+    });
+
+    window.addEventListener("pageshow", (event) => {
+      if (!event.persisted || !overviewAction) return;
+
+      overviewAction.remove();
+      overviewAction = null;
+      submitButtons.forEach((button, index) => { button.disabled = disabledStates[index]; });
+      overviewButton.textContent = overviewButtonLabel;
+      overviewButton.removeAttribute("aria-busy");
+      overviewStatus.hidden = true;
+    });
+  </script>
 </body>
 </html>

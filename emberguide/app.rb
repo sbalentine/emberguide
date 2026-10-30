@@ -1225,12 +1225,7 @@ server.mount_proc "/settings/emails" do |request, response|
         response.body = ""
         next
       when "generate_overview"
-        unless settings["digest_spark_overview"]
-          raise ArgumentError, "Enable Include Spark overview before generating it."
-        end
-        unless generate_daily_overview(force: true)
-          raise ArgumentError, "The overview could not be generated. Check Spark in Settings or try again after any current generation finishes. Any valid cached overview is unchanged."
-        end
+        generate_daily_overview(force: true, raise_on_error: true)
         response.status = 303
         response["Location"] = "/settings/emails?generated=overview"
         response.body = ""
@@ -1243,7 +1238,11 @@ server.mount_proc "/settings/emails" do |request, response|
       response.status = 422
     rescue => e
       puts "Unable to send scheduled email: #{e.class}: #{e.message}"
-      email_error = "Unable to send the email. Check the Gmail settings and try again."
+      email_error = if request.query["action"] == "generate_overview"
+                      "Unable to generate the overview. Check the application logs and try again. Any valid cached overview is unchanged."
+                    else
+                      "Unable to send the email. Check the Gmail settings and try again."
+                    end
       response.status = 502
     end
   elsif request.request_method != "GET"

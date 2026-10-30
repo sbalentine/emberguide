@@ -19,6 +19,9 @@ def load_daily_overview_state
       state["attempts"].is_a?(Integer) && state["attempts"].positive? &&
       state["attempted_at"].is_a?(String) &&
       parse_canvas_time(state["attempted_at"])
+    if valid && state.key?("error")
+      valid = state["error"].is_a?(String) && !state["error"].strip.empty?
+    end
     if valid && state["overview"]
       valid = state["overview"].is_a?(Hash) &&
         valid_digest_overview_bullets?(state["overview"]["bullets"]) &&
@@ -60,12 +63,12 @@ def daily_overview_for_digest(now: Time.now)
   end
 
   if state["date"] == now.getlocal.to_date.iso8601 && state["error"]
-    return { "error" => "Spark couldn't prepare today's overview. The normal saved school details are included below." }
+    return { "error" => "Spark couldn't prepare today's overview. Reason: #{state["error"]} The normal saved school details are included below." }
   end
   { "error" => "Today's Spark overview is not ready. The normal saved school details are included below." }
 rescue DailyAutomationError => e
   puts "Daily digest overview unavailable: #{e.message}"
-  { "error" => "Spark's cached overview is unavailable. The normal saved school details are included below." }
+  { "error" => "Spark's cached overview is unavailable. Reason: #{e.message} The normal saved school details are included below." }
 end
 
 def clear_daily_overview_cache
@@ -76,9 +79,15 @@ rescue SystemCallError, IOError => e
   raise DailyAutomationError, "Unable to clear the daily overview cache (#{e.class})."
 end
 
-def generate_daily_overview(now: Time.now, force: false)
-  return false unless load_scheduled_email_settings["digest_spark_overview"]
-  return false unless $daily_overview_generation_mutex.try_lock
+def generate_daily_overview(now: Time.now, force: false, raise_on_error: false)
+  unless load_scheduled_email_settings["digest_spark_overview"]
+    raise DailyAutomationError, "Enable Include Spark overview before generating it." if raise_on_error
+    return false
+  end
+  unless $daily_overview_generation_mutex.try_lock
+    raise DailyAutomationError, "An overview is already being generated. Wait for it to finish before trying again." if raise_on_error
+    return false
+  end
 
   begin
     today = now.getlocal.to_date.iso8601
@@ -112,6 +121,7 @@ def generate_daily_overview(now: Time.now, force: false)
       state.delete("error")
     end
     save_daily_overview_state(state)
+    raise DailyAutomationError, overview["error"] if overview["error"] && raise_on_error
     !overview["error"]
   ensure
     $daily_overview_generation_mutex.unlock
