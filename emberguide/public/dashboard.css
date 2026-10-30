@@ -1491,6 +1491,46 @@ a:hover {
    Grades
    ========================================================== */
 
+.unreviewed-grades {
+  margin: 20px 0;
+  border-left: 4px solid var(--danger);
+}
+
+.unreviewed-grades h2 {
+  margin: 0 0 8px;
+}
+
+.grade-review-form {
+  margin-top: 6px;
+}
+
+.grade-review-button {
+  padding: 5px 9px;
+  border: 1px solid var(--danger-border);
+  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.grade-review-button.is-reviewed {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.grade-review-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.grade-review-button:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 3px;
+}
+
 .grade-trend-summary {
   margin-bottom: 16px;
 }

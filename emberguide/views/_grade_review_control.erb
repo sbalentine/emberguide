@@ -1,0 +1,14 @@
+<form class="grade-review-form" method="post" action="/grades/review">
+  <input type="hidden" name="course_id" value="<%= h review_entry["course_id"] %>">
+  <input type="hidden" name="assignment_id" value="<%= h review_entry["assignment_id"] %>">
+  <input type="hidden" name="score" value="<%= h review_entry["score"] %>">
+  <input type="hidden" name="points_possible" value="<%= h review_entry["points_possible"] %>">
+  <input type="hidden" name="reviewed" value="<%= review_entry["reviewed_at"] ? "false" : "true" %>">
+  <input type="hidden" name="return_section" value="<%= h review_return_section %>">
+  <button
+    type="submit"
+    class="grade-review-button<%= " is-reviewed" if review_entry["reviewed_at"] %>"
+    aria-label="<%= h "Mark #{review_entry["name"]} #{review_entry["reviewed_at"] ? "unreviewed" : "reviewed"}" %>"
+    title="<%= review_entry["reviewed_at"] ? "Reviewed. Click to mark unreviewed." : "Mark this grade as reviewed." %>"
+  ><%= review_entry["reviewed_at"] ? "Reviewed" : "Mark reviewed" %></button>
+</form>

@@ -45,6 +45,7 @@ module DemoData
         File.join(runtime_dir, "course_name_mappings.json"),
       "GRADE_OVERRIDES_FILE" =>
         File.join(runtime_dir, "grade_overrides.json"),
+      "GRADE_REVIEWS_FILE" => File.join(runtime_dir, "grade_reviews.json"),
       "HIDDEN_COURSES_FILE" =>
         File.join(runtime_dir, "hidden_courses.json"),
       "MANUAL_COURSEWORK_FILE" =>

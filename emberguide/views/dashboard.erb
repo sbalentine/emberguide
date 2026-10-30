@@ -89,6 +89,8 @@
       grade_overrides = load_grade_overrides
       data = hide_assignments_from_dashboard(data, grade_overrides)
       valid_grades = combined_grade_submissions(data, grade_overrides)
+      grade_reviews = sync_grade_reviews
+      pending_grade_reviews = unreviewed_grades(grade_reviews)
       grades_by_course = valid_grades.group_by do |submission|
         submission.dig("assignment", "course_id").to_s
       end
@@ -364,6 +366,42 @@
             </div>
           </details>
         <% end %>
+      <% end %>
+    </section>
+
+    <section class="card unreviewed-grades" id="unreviewed-grades" aria-labelledby="unreviewed-grades-heading">
+      <h2 id="unreviewed-grades-heading">Unreviewed Grades (<%= pending_grade_reviews.length %>)</h2>
+      <p class="settings-help">Grades below 70% stay here until reviewed. A changed score requires another review.</p>
+      <% if defined?(grade_review_error) && grade_review_error %>
+        <p class="backup-message error" role="alert"><%= h grade_review_error %></p>
+      <% end %>
+      <% if pending_grade_reviews.empty? %>
+        <p class="empty-state">No unreviewed grades below 70%.</p>
+      <% else %>
+        <div class="unreviewed-grade-list">
+          <% pending_grade_reviews.each do |review_entry| %>
+            <div class="grade-row low-grade">
+              <div class="assignment-main">
+                <div class="assignment-title">
+                  <%= assignment_title_html(
+                    review_entry["name"], review_entry["html_url"],
+                    assignment_saved_content(data, review_entry["course_id"], review_entry["assignment_id"])
+                  ) %>
+                </div>
+                <div class="assignment-course">
+                  <%= h course_name_mappings.fetch(review_entry["course_id"], review_entry["course_name"]) %>
+                  &middot; <%= h grade_date(review_entry["graded_at"]) %>
+                </div>
+              </div>
+              <div class="grade-score">
+                <strong><%= h format_number(review_entry["score"]) %> / <%= h format_number(review_entry["points_possible"]) %></strong>
+                <span><%= h grade_review_percentage_label(review_entry) %></span>
+                <% review_return_section = "unreviewed-grades" %>
+                <%= render_partial("grade_review_control", binding) %>
+              </div>
+            </div>
+          <% end %>
+        </div>
       <% end %>
     </section>
 
@@ -914,6 +952,7 @@
 
                 url = assignment["html_url"]
                 official_override = submission["_official_override"]
+                review_entry = grade_reviews[grade_review_key(assignment["course_id"], assignment_id(submission))]
 
                 grade_class =
                   if pct && pct < 70
@@ -959,7 +998,7 @@
 
                   <% if pct %>
                     <span<%= pct == 100 ? ' class="perfect-score" title="Perfect score!"' : "" %>>
-                      <%= pct %>%
+                      <%= h(review_entry && grade_requires_review?(review_entry) ? grade_review_percentage_label(review_entry) : "#{pct}%") %>
                     </span>
                   <% end %>
 
@@ -970,6 +1009,11 @@
                     </span>
                   <% end %>
 
+                  <% if review_entry && grade_requires_review?(review_entry) &&
+                        review_entry["score"] == score.to_f && review_entry["points_possible"] == points.to_f %>
+                    <% review_return_section = "grades" %>
+                    <%= render_partial("grade_review_control", binding) %>
+                  <% end %>
                 </div>
 
               </div>
@@ -1262,6 +1306,18 @@
         row.classList.add("is-completing");
         button.disabled = true;
         button.setAttribute("aria-label", "Marking to-do complete");
+      });
+    });
+
+    document.querySelectorAll(".grade-review-form").forEach((form) => {
+      form.addEventListener("submit", (event) => {
+        const button = form.querySelector("button");
+        if (button.disabled) {
+          event.preventDefault();
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Saving...";
       });
     });
 

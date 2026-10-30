@@ -25,7 +25,7 @@ BACKUP_SEND_HOUR = 3
 DIGEST_SEND_HOUR = 6
 DIGEST_OVERVIEW_TIMEOUT = 20 * 60
 DIGEST_OVERVIEW_READ_TIMEOUT = 15 * 60
-BACKUP_SCHEMA_VERSION = 7
+BACKUP_SCHEMA_VERSION = 8
 BACKUP_MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 BACKUP_MAX_ENTRY_BYTES = 10 * 1024 * 1024
 BACKUP_MAX_TOTAL_BYTES = 25 * 1024 * 1024
@@ -164,6 +164,7 @@ def backup_payloads(now: Time.now)
     "canvas_cache.json" => backup_json(dashboard_data || {}),
     "manual_coursework.json" => backup_json(load_manual_coursework),
     "grade_overrides.json" => backup_json(load_grade_overrides),
+    "grade_reviews.json" => backup_json(sync_grade_reviews),
     "course_name_mappings.json" => backup_json(load_course_name_mappings),
     "hidden_courses.json" => backup_json(load_hidden_course_ids),
     "event_journal.json" => backup_json(journal),
@@ -223,6 +224,7 @@ def backup_restore_paths
     "canvas_cache.json" => CACHE_FILE,
     "manual_coursework.json" => MANUAL_COURSEWORK_FILE,
     "grade_overrides.json" => GRADE_OVERRIDES_FILE,
+    "grade_reviews.json" => GRADE_REVIEWS_FILE,
     "course_name_mappings.json" => COURSE_NAME_MAPPINGS_FILE,
     "hidden_courses.json" => HIDDEN_COURSES_FILE,
     "event_journal.json" => EVENT_JOURNAL_FILE,
@@ -239,6 +241,8 @@ end
 def validate_backup_json(filename, value)
   valid =
     case filename
+    when "grade_reviews.json"
+      valid_grade_reviews?(value)
     when "student_settings.json"
       valid_student_settings?(value)
     when "spark_history.json"
@@ -351,7 +355,7 @@ def validated_backup_payloads(archive)
 
   manifest = JSON.parse(manifest_content)
   schema_version = manifest["schema_version"]
-  unless [1, 2, 3, 5, 6, BACKUP_SCHEMA_VERSION].include?(schema_version)
+  unless [1, 2, 3, 5, 6, 7, BACKUP_SCHEMA_VERSION].include?(schema_version)
     raise BackupRestoreError, "This backup version is not supported."
   end
   Time.iso8601(manifest.fetch("created_at"))
@@ -376,6 +380,7 @@ def validated_backup_payloads(archive)
     end
     expected_files -= ["spark_settings.json"] if schema_version < 6
     expected_files -= ["student_settings.json"] if schema_version < 7
+    expected_files -= ["grade_reviews.json"] if schema_version < 8
     unless entries.keys.sort == expected_files.sort
     raise BackupRestoreError, "The backup file list is incomplete or invalid."
   end
@@ -480,8 +485,10 @@ def restore_backup_archive(archive)
         $daily_overview_generation_mutex.synchronize do
           SPARK_SETTINGS_MUTEX.synchronize do
             clear_daily_overview_cache
-            STUDENT_SETTINGS_MUTEX.synchronize { write_restored_payloads(payloads) }
-            apply_restored_runtime_state(payloads)
+            GRADE_REVIEWS_MUTEX.synchronize do
+              STUDENT_SETTINGS_MUTEX.synchronize { write_restored_payloads(payloads) }
+              apply_restored_runtime_state(payloads)
+            end
             $ai_default_model = nil
           end
         end
@@ -667,6 +674,7 @@ def digest_data(now: Time.now, include_overview: true)
       today: today
     ),
     "recent_grades" => digest_recent_grades(data, overrides, now),
+    "unreviewed_grades" => unreviewed_grades(sync_grade_reviews),
     "data" => data,
     "mappings" => mappings
   }
@@ -780,6 +788,18 @@ def digest_text_body(digest, now)
   else
     digest["grade_snapshot"].each do |grade|
       lines << "#{grade["name"]}: #{grade["percentage"]}% (#{grade["letter"]})"
+    end
+  end
+
+  lines.concat(["", "UNREVIEWED GRADES"])
+  if Array(digest["unreviewed_grades"]).empty?
+    lines << "No unreviewed grades below 70%."
+  else
+    lines << "Grades below 70% stay on this list until reviewed on the EmberGuide dashboard."
+    digest["unreviewed_grades"].each do |entry|
+      course = digest["mappings"].fetch(entry["course_id"], entry["course_name"])
+      lines << "#{entry["name"]} - #{course}: #{format_number(entry["score"])}/#{format_number(entry["points_possible"])} (#{grade_review_percentage_label(entry)}) - Needs review"
+      lines << "  #{entry["html_url"]}" if entry["html_url"]
     end
   end
 
@@ -933,6 +953,30 @@ def digest_html_body(digest, now, logo_src: "/emberguide-icon.png")
                       </div>
                     HTML
                   end
+  unreviewed_rows =
+    if Array(digest["unreviewed_grades"]).empty?
+      '<tr><td style="padding:14px;color:#9b98b2;">No unreviewed grades below 70%.</td></tr>'
+    else
+      digest["unreviewed_grades"].map do |entry|
+        title = CGI.escapeHTML(entry["name"])
+        if entry["html_url"]
+          title = "<a href=\"#{CGI.escapeHTML(entry["html_url"])}\" style=\"color:#ff7085;\">#{title}</a>"
+        end
+        course = CGI.escapeHTML(digest["mappings"].fetch(entry["course_id"], entry["course_name"]))
+        <<~HTML
+          <tr>
+            <td style="padding:12px 14px;border-bottom:1px solid #572b35;">
+              <strong>#{title}</strong><br>
+              <span style="color:#9b98b2;font-size:13px;">#{course}</span>
+            </td>
+            <td style="padding:12px 14px;border-bottom:1px solid #572b35;text-align:right;">
+              <strong>#{format_number(entry["score"])}/#{format_number(entry["points_possible"])} (#{CGI.escapeHTML(grade_review_percentage_label(entry))})</strong><br>
+              <span style="font-size:12px;">Needs review</span>
+            </td>
+          </tr>
+        HTML
+      end.join
+    end
   grade_cards =
     if digest["grade_snapshot"].empty?
       '<p style="margin:0;color:#9b98b2;">No graded assignments yet.</p>'
@@ -1120,6 +1164,12 @@ def digest_html_body(digest, now, logo_src: "/emberguide-icon.png")
           <div class="grade-snapshot" style="padding:19px;border-radius:14px;background:#121020;border:1px solid #29263d;">
             <h2 style="margin:0 0 12px;font-size:18px;color:#f4f2ff;">Current Grade Snapshot</h2>
             <table role="presentation" style="width:100%;border-collapse:collapse;">#{grade_cards}</table>
+          </div>
+
+          <div class="digest-card" style="margin-top:18px;padding:18px;border:1px solid #572b35;border-radius:14px;background:#181017;color:#ff7085;">
+            <h2 style="margin:0 0 10px;font-size:18px;color:#f4f2ff;">Unreviewed Grades</h2>
+            <p style="color:#9b98b2;font-size:13px;">Grades below 70% stay on this list until reviewed on the EmberGuide dashboard.</p>
+            <table role="presentation" style="width:100%;border-collapse:collapse;">#{unreviewed_rows}</table>
           </div>
 
           #{assignment_section.call("Missing Work", digest["missing"])}

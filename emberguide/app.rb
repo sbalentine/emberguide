@@ -32,6 +32,7 @@ require_relative "lib/manual_coursework"
 require_relative "lib/event_journal"
 require_relative "lib/home_assistant_events"
 require_relative "lib/dashboard_data"
+require_relative "lib/grade_reviews"
 require_relative "lib/course_modules"
 require_relative "lib/assignment_details"
 require_relative "lib/school_calendar"
@@ -156,6 +157,42 @@ server.mount_proc "/" do |_request, response|
       "Unable to load school dashboard." \
       "\n\n#{e.message}"
   end
+end
+
+server.mount_proc "/grades/review" do |request, response|
+  unless request.path == "/grades/review" && request.request_method == "POST"
+    response.status = request.path == "/grades/review" ? 405 : 404
+    response["Allow"] = "POST" if response.status == 405
+    response.body = "Grade reviews support POST /grades/review only."
+    next
+  end
+
+  update_grade_review(
+    request.query["course_id"], request.query["assignment_id"],
+    score: request.query["score"], points_possible: request.query["points_possible"],
+    reviewed: request.query["reviewed"]
+  )
+  section = request.query["return_section"] == "grades" ? "grades" : "unreviewed-grades"
+  response.status = 303
+  response["Location"] = "/##{section}"
+  response.body = ""
+rescue ArgumentError => e
+  puts "Unable to update grade review: #{e.message}"
+  grade_review_error = e.message
+  data = dashboard_data_with_manual
+  response.status = 422
+  response["Content-Type"] = "text/html; charset=utf-8"
+  response["Cache-Control"] = "no-cache"
+  response.body = if data
+                    ERB.new(File.read(File.join(APP_ROOT, "views", "dashboard.erb"))).result(binding)
+                  else
+                    "<p role=\"alert\">#{h grade_review_error}</p><a href=\"/\">Return to the dashboard</a>"
+                  end
+rescue GradeReviewError => e
+  puts "Unable to update grade review: #{e.message}"
+  response.status = 503
+  response["Content-Type"] = "text/plain; charset=utf-8"
+  response.body = e.message
 end
 
 server.mount_proc "/modules" do |request, response|

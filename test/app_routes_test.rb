@@ -1151,6 +1151,66 @@ class AppRoutesTest < Minitest::Test
     )
   end
 
+  def test_low_grades_have_a_persistent_review_queue_and_review_controls_on_the_main_page
+    $dashboard_data["grades"].first["score"] = 6
+    $dashboard_data["grades"].first["graded_at"] = "2026-01-02T12:00:00Z"
+    body = request("/").body
+    queue = body[/<section class="card unreviewed-grades".*?<\/section>/m]
+    assert_includes queue, "Unreviewed Grades (1)"
+    assert_includes queue, "Quiz"
+    assert_includes queue, "Mark reviewed"
+    assert_equal 2, body.scan('action="/grades/review"').length
+
+    response = request("/grades/review", Net::HTTP::Post, "course_id" => "1",
+      "assignment_id" => "10", "score" => "6", "points_possible" => "10",
+      "reviewed" => "true", "return_section" => "unreviewed-grades")
+    assert_equal "303", response.code
+    assert_equal "/#unreviewed-grades", URI(response["Location"]).request_uri + "##{URI(response["Location"]).fragment}"
+    body = request("/").body
+    queue = body[/<section class="card unreviewed-grades".*?<\/section>/m]
+    assert_includes queue, "Unreviewed Grades (0)"
+    refute_includes queue, "Quiz"
+    assert_includes body, ">Reviewed</button>"
+    preview = request("/settings/emails/digest-preview")
+    assert_includes preview.body, "No unreviewed grades below 70%."
+
+    response = request("/grades/review", Net::HTTP::Post, "course_id" => "1",
+      "assignment_id" => "10", "score" => "6", "points_possible" => "10",
+      "reviewed" => "false", "return_section" => "grades")
+    assert_equal "303", response.code
+    assert_includes request("/").body, "Unreviewed Grades (1)"
+    assert_includes request("/settings/emails/digest-preview").body, "Needs review"
+  end
+
+  def test_grade_review_route_rejects_stale_scores_and_invalid_actions_without_losing_the_queue
+    $dashboard_data["grades"].first["score"] = 6
+    request("/")
+    $dashboard_data["grades"].first["score"] = 5
+    response = request("/grades/review", Net::HTTP::Post, "course_id" => "1",
+      "assignment_id" => "10", "score" => "6", "points_possible" => "10", "reviewed" => "true")
+    assert_equal "422", response.code
+    assert_includes response.body, 'role="alert"'
+    assert_includes response.body, "grade changed"
+    assert_includes response.body, "Unreviewed Grades (1)"
+    assert_equal "405", request("/grades/review").code
+    assert_equal "404", request("/grades/review/missing", Net::HTTP::Post).code
+    response = request("/grades/review", Net::HTTP::Post, "reviewed" => "invalid")
+    assert_equal "422", response.code
+    assert_includes response.body, "Choose whether the grade has been reviewed."
+  end
+
+  def test_unreviewed_grade_titles_and_course_names_are_escaped
+    $dashboard_data["grades"].first["score"] = 6
+    $dashboard_data["grades"].first["assignment"]["name"] = "Quiz <script>alert(1)</script>"
+    $dashboard_data["course_names"]["1"] = "Math <test>"
+    response = request("/")
+    assert_equal "200", response.code
+    queue = response.body[/<section class="card unreviewed-grades".*?<\/section>/m]
+    assert_includes queue, "Quiz &lt;script&gt;"
+    assert_includes queue, "Math &lt;test&gt;"
+    refute_includes queue, "<script>"
+  end
+
   def test_overview_generation_and_preview_use_the_daily_cache_without_sending_email
     app = TOPLEVEL_BINDING.eval("self")
     calls = 0

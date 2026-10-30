@@ -17,6 +17,7 @@ ENV["CACHE_FILE"] = File.join(TEST_TMP_DIR, "canvas_cache.json")
 ENV["EVENT_JOURNAL_FILE"] = File.join(TEST_TMP_DIR, "event_journal.json")
 ENV["COURSE_NAME_MAPPINGS_FILE"] = File.join(TEST_TMP_DIR, "course_names.json")
 ENV["GRADE_OVERRIDES_FILE"] = File.join(TEST_TMP_DIR, "grade_overrides.json")
+ENV["GRADE_REVIEWS_FILE"] = File.join(TEST_TMP_DIR, "grade_reviews.json")
 ENV["MANUAL_COURSEWORK_FILE"] = File.join(TEST_TMP_DIR, "manual_coursework.json")
 ENV["HIDDEN_COURSES_FILE"] = File.join(TEST_TMP_DIR, "hidden_courses.json")
 ENV["BACKUP_SETTINGS_FILE"] = File.join(TEST_TMP_DIR, "backup_settings.json")
@@ -65,6 +66,11 @@ end
 Minitest::Test.prepend(QuietTestOutput)
 
 class Minitest::Test
+  def before_setup
+    super
+    FileUtils.rm_f(GRADE_REVIEWS_FILE)
+  end
+
   def deep_copy(value)
     Marshal.load(Marshal.dump(value))
   end

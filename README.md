@@ -79,6 +79,26 @@ it. Recent scores, points possible, dates, and percentages make the estimate
 easy to understand, while local grade editing supports corrections and work
 tracked outside Canvas.
 
+### Keep low grades on the radar until reviewed
+
+The dashboard's **Unreviewed Grades** section lists every saved assignment below
+70%, including older grades. Click **Mark reviewed** beside an assignment there
+or in the course grade list to acknowledge it. The course grade row then shows
+**Reviewed**; click it again to undo the review.
+
+Unreviewed grades also appear in both daily email formats, independently of the
+seven-day recent-grades window. Outstanding grades are saved even if Canvas stops
+returning the assignment in a later refresh. A score or points-possible change
+requires another review if the effective grade is still below 70%; a grade that
+improves to 70% or higher no longer needs review. Local corrections and custom
+grades use the same rule. Excused, omitted, ungraded, zero-point, and hidden work
+is excluded.
+
+Review history is stored in `grade_reviews.json` next to the Canvas cache
+(`GRADE_REVIEWS_FILE` overrides its location) and is included in backups and
+restores. Older backups remain supported and preserve existing review history
+when no review-history file is present.
+
 > **Demo data:** Every grade, assignment, date, and score shown above is
 > illustrative data created for the EmberGuide demo. The displayed profile does
 > not contain a real student's academic record.
@@ -515,7 +535,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.13.2"
+version: "1.14.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

@@ -133,6 +133,7 @@ class EmailBackupsTest < Minitest::Test
       course_name_mappings.json
       event_journal.json
       grade_overrides.json
+      grade_reviews.json
       hidden_courses.json
       manifest.json
       manual_coursework.json
@@ -178,7 +179,7 @@ class EmailBackupsTest < Minitest::Test
       "2027-06-04",
       JSON.parse(entries["achievement_settings.json"])["school_year_end"]
     )
-    assert_equal 7, JSON.parse(entries["manifest.json"])["schema_version"]
+    assert_equal 8, JSON.parse(entries["manifest.json"])["schema_version"]
   end
 
   def test_backup_restore_round_trip_restores_local_state
@@ -403,9 +404,11 @@ class EmailBackupsTest < Minitest::Test
     save_student_settings("11", "15")
     entries = backup_archive_entries(build_backup_archive)
     entries.delete("student_settings.json")
+    entries.delete("grade_reviews.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 6
     manifest["files"].delete("student_settings.json")
+    manifest["files"].delete("grade_reviews.json")
     entries["manifest.json"] = backup_json(manifest)
     refute_includes restore_backup_archive(backup_archive_from_entries(entries)), "student_settings.json"
     assert_equal 15, load_student_settings["birthday_day"]
@@ -432,10 +435,12 @@ class EmailBackupsTest < Minitest::Test
     entries = backup_archive_entries(build_backup_archive)
     entries.delete("spark_settings.json")
     entries.delete("student_settings.json")
+    entries.delete("grade_reviews.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 5
     manifest["files"].delete("spark_settings.json")
     manifest["files"].delete("student_settings.json")
+    manifest["files"].delete("grade_reviews.json")
     entries["manifest.json"] = backup_json(manifest)
     refute_includes restore_backup_archive(backup_archive_from_entries(entries)), "spark_settings.json"
     assert_equal "Keep these notes", load_spark_settings["student_context"]
@@ -450,11 +455,13 @@ class EmailBackupsTest < Minitest::Test
     entries.delete("spark_history.json")
     entries.delete("spark_settings.json")
     entries.delete("student_settings.json")
+    entries.delete("grade_reviews.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 3
     manifest["files"].delete("spark_history.json")
     manifest["files"].delete("spark_settings.json")
     manifest["files"].delete("student_settings.json")
+    manifest["files"].delete("grade_reviews.json")
     entries["manifest.json"] = backup_json(manifest)
     restored = restore_backup_archive(backup_archive_from_entries(entries))
     refute_includes restored, "spark_history.json"
@@ -469,6 +476,7 @@ class EmailBackupsTest < Minitest::Test
     entries.delete("spark_history.json")
     entries.delete("spark_settings.json")
     entries.delete("student_settings.json")
+    entries.delete("grade_reviews.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 1
     manifest["files"].delete("school_calendar_settings.json")
@@ -477,6 +485,7 @@ class EmailBackupsTest < Minitest::Test
     manifest["files"].delete("spark_history.json")
     manifest["files"].delete("spark_settings.json")
     manifest["files"].delete("student_settings.json")
+    manifest["files"].delete("grade_reviews.json")
     entries["manifest.json"] = backup_json(manifest)
     save_school_calendar_settings(
       "https://calendar.example.test/current.ics"
@@ -500,6 +509,7 @@ class EmailBackupsTest < Minitest::Test
     entries.delete("spark_history.json")
     entries.delete("spark_settings.json")
     entries.delete("student_settings.json")
+    entries.delete("grade_reviews.json")
     manifest = JSON.parse(entries["manifest.json"])
     manifest["schema_version"] = 2
     manifest["files"].delete("achievement_history.json")
@@ -507,6 +517,7 @@ class EmailBackupsTest < Minitest::Test
     manifest["files"].delete("spark_history.json")
     manifest["files"].delete("spark_settings.json")
     manifest["files"].delete("student_settings.json")
+    manifest["files"].delete("grade_reviews.json")
     entries["manifest.json"] = backup_json(manifest)
     record_achievement_day(
       { "missing" => [] },
@@ -600,6 +611,61 @@ class EmailBackupsTest < Minitest::Test
     refute File.exist?(DAILY_OVERVIEW_FILE)
     assert load_scheduled_email_settings["digest_spark_overview"]
     assert daily_overview_for_digest(now: now)["error"]
+  end
+
+  def test_grade_reviews_are_backed_up_restored_and_validated
+    now = Time.local(2026, 10, 29, 12)
+    $dashboard_data["grades"] = [
+      graded_submission(10, 1, "Reviewed quiz", 6, 10, now.iso8601),
+      graded_submission(11, 1, "Unreviewed quiz", 4, 10, now.iso8601)
+    ]
+    update_grade_review(1, 10, score: 6, points_possible: 10, reviewed: "true", now: now)
+    $dashboard_data["grades"] = []
+    archive = build_backup_archive
+    save_grade_reviews({})
+    assert_includes restore_backup_archive(archive), "grade_reviews.json"
+    state = load_grade_reviews
+    assert_equal now.iso8601, state[grade_review_key(1, 10)]["reviewed_at"]
+    assert_equal ["Unreviewed quiz"], unreviewed_grades(state).map { |entry| entry["name"] }
+    assert_raises(BackupRestoreError) { validate_backup_json("grade_reviews.json", "invalid" => {}) }
+  end
+
+  def test_schema_seven_restore_preserves_grade_reviews_not_in_the_backup
+    entries = backup_archive_entries(build_backup_archive)
+    entries.delete("grade_reviews.json")
+    manifest = JSON.parse(entries["manifest.json"])
+    manifest["schema_version"] = 7
+    manifest["files"].delete("grade_reviews.json")
+    entries["manifest.json"] = backup_json(manifest)
+    now = Time.local(2026, 10, 29, 12)
+    $dashboard_data["grades"] = [graded_submission(10, 1, "Quiz", 6, 10, now.iso8601)]
+    update_grade_review(1, 10, score: 6, points_possible: 10, reviewed: "true", now: now)
+    refute_includes restore_backup_archive(backup_archive_from_entries(entries)), "grade_reviews.json"
+    assert_equal now.iso8601, load_grade_reviews[grade_review_key(1, 10)]["reviewed_at"]
+  end
+
+  def test_unreviewed_grades_remain_in_both_email_formats_until_explicitly_reviewed
+    now = Time.local(2026, 10, 29, 12)
+    $dashboard_data["grades"] = [
+      graded_submission(10, 1, "Old quiz <test>", 6, 10, (now - 60 * 86400).iso8601),
+      graded_submission(11, 1, "Passing quiz", 7, 10, now.iso8601)
+    ]
+    save_course_name_mappings("1" => "Algebra")
+    digest = digest_data(now: now)
+    assert_equal ["Old quiz <test>"], digest["unreviewed_grades"].map { |entry| entry["name"] }
+    assert_equal ["Passing quiz"], digest["recent_grades"].map { |entry| entry.dig("assignment", "name") }
+    text = digest_text_body(digest, now)
+    html = digest_html_body(digest, now)
+    assert_includes text, "UNREVIEWED GRADES"
+    assert_includes text, "Old quiz <test> - Algebra: 6/10 (60.0%)"
+    assert_includes html, "Old quiz &lt;test&gt;"
+    refute_includes html, "Old quiz <test>"
+    assert_includes html, "Needs review"
+    update_grade_review(1, 10, score: 6, points_possible: 10, reviewed: "true", now: now)
+    digest = digest_data(now: now)
+    assert_empty digest["unreviewed_grades"]
+    refute_includes digest_text_body(digest, now), "Old quiz"
+    refute_includes digest_html_body(digest, now), "Old quiz"
   end
 
   def test_digest_contains_snapshot_missing_due_work_and_recent_grades

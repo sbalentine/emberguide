@@ -220,6 +220,7 @@ def refresh_dashboard
       $last_refresh_error = nil
     end
     record_achievement_day(data)
+    sync_grade_reviews
 
     puts(
       "Canvas refresh successful at " \
@@ -266,6 +267,7 @@ def initialize_dashboard_data
         $last_successful_update = nil
       end
     end
+    sync_grade_reviews
   end
 end
 
