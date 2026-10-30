@@ -141,6 +141,37 @@ class DashboardDataTest < Minitest::Test
     assert_nil dashboard_status[:error]
   end
 
+  def test_initialization_loads_cached_data_and_syncs_grade_reviews_without_recursive_locking
+    expected = base_data(
+      "grades" => [{
+        "assignment_id" => 10, "score" => 6, "graded_at" => "2026-09-27T12:00:00Z",
+        "assignment" => { "id" => 10, "course_id" => 1, "name" => "Quiz", "points_possible" => 10 }
+      }]
+    )
+    capture_io do
+      save_cache(expected)
+      initialize_dashboard_data
+    end
+    assert_equal expected, dashboard_data
+    assert_equal Time.parse(expected["updated_at"]), dashboard_status[:updated_at]
+    assert_equal ["Quiz"], unreviewed_grades(load_grade_reviews).map { |entry| entry["name"] }
+    refute $data_mutex.locked?
+    refute GRADE_REVIEWS_MUTEX.locked?
+
+    update_grade_review(1, 10, score: 6, points_possible: 10, reviewed: "true")
+    capture_io { initialize_dashboard_data }
+    assert_empty unreviewed_grades(load_grade_reviews)
+  end
+
+  def test_initialization_with_no_low_grades_does_not_deadlock
+    capture_io do
+      save_cache(base_data)
+      initialize_dashboard_data
+    end
+    assert_equal base_data, dashboard_data
+    assert_empty unreviewed_grades(load_grade_reviews)
+  end
+
   def test_refresh_publishes_events_after_journal_ids_are_assigned
     $dashboard_data = base_data
     changed = base_data(

@@ -267,8 +267,8 @@ def initialize_dashboard_data
         $last_successful_update = nil
       end
     end
-    sync_grade_reviews
   end
+  sync_grade_reviews
 end
 
 # ============================================================

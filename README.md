@@ -535,7 +535,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.14.0"
+version: "1.14.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false
