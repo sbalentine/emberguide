@@ -942,7 +942,10 @@ git commit -m "Describe the change"
 git push
 ```
 
-Once the changes are working locally, increase the version in `emberguide/config.yaml` and push the changes. Home Assistant will then offer the new version as an update.
+Once the changes are working locally, increase the version in `emberguide/config.yaml`,
+add matching release notes to `emberguide/CHANGELOG.md`, and push the changes.
+Home Assistant will then offer the new version as an update and display the
+changelog from the add-on folder; GitHub release notes alone do not populate it.
 
 ## Demo mode
 
