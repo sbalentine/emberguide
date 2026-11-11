@@ -392,6 +392,9 @@ A compact snapshot shows every current course average, while locally rendered
 Chart.js trends rebuild the cumulative grade after each assignment on a shared
 A–F scale. Open any class to connect the overall letter grade to recent scores,
 points possible, and dates.
+Zero-point extra-credit scores count toward both the snapshot and chart totals.
+Both current-grade displays round to whole percentages; chart points and tooltips
+retain one decimal place.
 
 Local grade tools can correct stale Canvas values, add grades from another
 system, or temporarily hide an inaccurate assignment until Canvas updates. All
@@ -535,7 +538,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.14.1"
+version: "1.14.2"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

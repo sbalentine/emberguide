@@ -817,7 +817,7 @@
                   </div>
 
                   <div class="grade-trend-current">
-                    <strong><%= h format_number(course["current_percentage"]) %>%</strong>
+                    <strong><%= h course["current_percentage"].round %>%</strong>
                     <span><%= h course["letter"] %></span>
                   </div>
                 </div>
@@ -1200,12 +1200,13 @@
                   },
                   label(context) {
                     const point = context.raw;
-                    const assignmentPercentage =
-                      (point.score / point.points_possible) * 100;
+                    const assignmentPercentage = point.points_possible > 0
+                      ? ` (${formatNumber((point.score / point.points_possible) * 100)}%)`
+                      : "";
 
                     return [
                       point.assignment,
-                      `Assignment: ${formatNumber(point.score)}/${formatNumber(point.points_possible)} pts (${formatNumber(assignmentPercentage)}%)`,
+                      `Assignment: ${formatNumber(point.score)}/${formatNumber(point.points_possible)} pts${assignmentPercentage}`,
                       `Course grade: ${formatNumber(point.y)}%`
                     ];
                   },

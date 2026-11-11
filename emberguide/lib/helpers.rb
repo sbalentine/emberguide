@@ -44,7 +44,7 @@ def grade_trend_points(submissions)
     points_possible = assignment["points_possible"]
 
     next unless recorded_at && !submission["score"].nil?
-    next if points_possible.nil? || points_possible.to_f <= 0
+    next if points_possible.nil? || points_possible.to_f < 0
 
     [recorded_at, submission]
   end.sort_by(&:first)
@@ -52,16 +52,18 @@ def grade_trend_points(submissions)
   earned = 0.0
   possible = 0.0
 
-  chronological.map do |recorded_at, submission|
+  chronological.filter_map do |recorded_at, submission|
     assignment = submission["assignment"]
     score = submission["score"].to_f
     points_possible = assignment["points_possible"].to_f
     earned += score
     possible += points_possible
+    calculated = percentage(earned, possible)
+    next unless calculated
 
     {
       "x" => recorded_at.to_i * 1000,
-      "y" => percentage(earned, possible),
+      "y" => calculated,
       "assignment" => assignment["name"],
       "score" => score,
       "points_possible" => points_possible,

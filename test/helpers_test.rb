@@ -55,6 +55,25 @@ class HelpersTest < Minitest::Test
     )
   end
 
+  def test_grade_trends_include_extra_credit_before_and_after_point_bearing_work
+    submissions = [
+      { "score" => 2, "graded_at" => "2026-10-01T12:00:00Z",
+        "assignment" => { "name" => "Early bonus", "points_possible" => 0 } },
+      { "score" => 8, "graded_at" => "2026-10-02T12:00:00Z",
+        "assignment" => { "name" => "Quiz", "points_possible" => 10 } },
+      { "score" => 1, "graded_at" => "2026-10-03T12:00:00Z",
+        "assignment" => { "name" => "Late bonus", "points_possible" => 0 } }
+    ]
+
+    points = grade_trend_points(submissions)
+
+    assert_equal ["Quiz", "Late bonus"], points.map { |point| point["assignment"] }
+    assert_equal [100.0, 110.0], points.map { |point| point["y"] }
+    assert_equal 11.0, points.last["earned"]
+    assert_equal 10.0, points.last["possible"]
+    assert_empty grade_trend_points([submissions.first])
+  end
+
   def test_combined_grades_exclude_hidden_earned_and_possible_points
     data = {
       "courses" => [{ "id" => 1 }],

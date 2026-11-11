@@ -267,4 +267,40 @@ class AppTest < Minitest::Test
     assert_includes html, 'href="#grade-course-1"'
     assert_includes html, 'id="grade-course-1"'
   end
+
+  def test_grade_snapshot_and_chart_include_extra_credit_and_display_the_same_percentage
+    data = {
+      "courses" => [{ "id" => 1, "name" => "Math" }],
+      "course_names" => { "1" => "Math" },
+      "grades" => [
+        { "assignment_id" => 10, "score" => 25,
+          "graded_at" => "2026-10-01T12:00:00Z",
+          "assignment" => { "id" => 10, "course_id" => 1, "name" => "Quiz",
+                            "points_possible" => 30 } },
+        { "assignment_id" => 11, "score" => 2,
+          "graded_at" => "2026-10-02T12:00:00Z",
+          "assignment" => { "id" => 11, "course_id" => 1, "name" => "Bonus",
+                            "points_possible" => 0 } },
+        { "assignment_id" => 12, "score" => 0,
+          "graded_at" => "2026-10-03T12:00:00Z",
+          "assignment" => { "id" => 12, "course_id" => 1, "name" => "Practice",
+                            "points_possible" => 1 } }
+      ]
+    }
+
+    template = ERB.new(File.read(File.join(APP_ROOT, "views", "dashboard.erb")))
+    html = template.result(binding)
+    trend = JSON.parse(html[/<script id="grade-trend-data" type="application\/json">(.*?)<\/script>/m, 1]).first
+    snapshot = html[/<a\b[^>]*class="grade-snapshot-item.*?<\/a>/m]
+    chart_current = html[/<div class="grade-trend-current">.*?<\/div>/m]
+
+    assert_equal 87.1, trend["current_percentage"]
+    assert_equal 27.0, trend["points"].last["earned"]
+    assert_equal 31.0, trend["points"].last["possible"]
+    assert_equal "B", trend["letter"]
+    assert_includes snapshot, "<strong>87%</strong>"
+    assert_includes snapshot, 'grade-snapshot-letter">B'
+    assert_includes chart_current, "<strong>87%</strong>"
+    assert_includes chart_current, "<span>B</span>"
+  end
 end
