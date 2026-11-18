@@ -8,14 +8,41 @@ class HelpersTest < Minitest::Test
     assert_equal "-", format_number(nil)
     assert_equal 5, format_number(5.0)
     assert_equal 5.3, format_number(5.34)
-    assert_equal "A", letter_grade(90)
-    assert_equal "B", letter_grade(89.9)
+    assert_equal "A-", letter_grade(90)
+    assert_equal "B+", letter_grade(89.9)
     assert_equal "F", letter_grade(0)
     assert_nil letter_grade(nil)
     assert_equal "🧪", course_symbol("6th Grade Science")
     assert_equal "➗", course_symbol("Math 6A")
     assert_equal "🎭", course_symbol("Explore Drama")
     assert_equal "🌎", course_symbol("S1 G6 SS")
+  end
+
+  def test_plus_minus_grade_breakpoints_and_colors
+    {
+      "A+" => [97, 98, 99, 100, 110],
+      "A" => [94, 95, 96, 96.9],
+      "A-" => [90, 91, 92, 93, 93.9],
+      "B+" => [87, 88, 89, 89.9], "B" => [84, 85, 86, 86.9],
+      "B-" => [80, 81, 82, 83, 83.9],
+      "C+" => [77, 78, 79, 79.9], "C" => [74, 75, 76, 76.9],
+      "C-" => [70, 71, 72, 73, 73.9],
+      "D+" => [67, 68, 69, 69.9], "D" => [64, 65, 66, 66.9],
+      "D-" => [60, 61, 62, 63, 63.9], "F" => [0, 49, 53, 56, 59.9]
+    }.each do |letter, values|
+      values.each do |value|
+        assert_equal letter, letter_grade(value), "percentage #{value}"
+        assert_equal "grade-#{letter[0].downcase}", grade_css_class(value)
+      end
+    end
+    assert_equal "", grade_css_class(nil)
+    assert_equal "", grade_badge(percentage(2, 0))
+    assert_equal '<span class="grade-result grade-b">89.9% · B+</span>', grade_badge(89.9)
+    assert_includes grade_badge(60, label: "<60%"), "&lt;60% · D-"
+    assert_includes grade_badge(100), 'grade-a perfect-score" title="Perfect score!"'
+    assert_includes grade_badge(100), "100% · A+"
+    refute_includes grade_badge(99), "perfect-score"
+    refute_includes grade_badge(101), "perfect-score"
   end
 
   def test_grade_trend_points_build_cumulative_percentages_in_date_order
@@ -40,6 +67,8 @@ class HelpersTest < Minitest::Test
 
     assert_equal ["Quiz", "Project"], points.map { |point| point["assignment"] }
     assert_equal [80.0, 86.7], points.map { |point| point["y"] }
+    assert_equal ["B-", "B"], points.map { |point| point["letter"] }
+    assert_equal ["B-", "A-"], points.map { |point| point["assignment_letter"] }
     assert_equal 26.0, points.last["earned"]
     assert_equal 30.0, points.last["possible"]
   end
@@ -69,6 +98,8 @@ class HelpersTest < Minitest::Test
 
     assert_equal ["Quiz", "Late bonus"], points.map { |point| point["assignment"] }
     assert_equal [100.0, 110.0], points.map { |point| point["y"] }
+    assert_equal ["A+", "A+"], points.map { |point| point["letter"] }
+    assert_nil points.last["assignment_letter"]
     assert_equal 11.0, points.last["earned"]
     assert_equal 10.0, points.last["possible"]
     assert_empty grade_trend_points([submissions.first])

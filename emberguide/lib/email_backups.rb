@@ -869,7 +869,7 @@ def digest_grade_colors(letter)
     "D" => { foreground: "#ff8a5b", background: "#241711", border: "#6d3825" },
     "F" => { foreground: "#ff7085", background: "#251319", border: "#6d2f3a" }
   }.fetch(
-    letter,
+    letter.to_s[0],
     { foreground: "#9b98b2", background: "#121020", border: "#29263d" }
   )
 end

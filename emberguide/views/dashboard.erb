@@ -267,7 +267,7 @@
         <div class="grade-snapshot-list">
           <% grade_snapshot.each do |grade| %>
             <a
-              class="grade-snapshot-item grade-<%= grade["letter"].downcase %>"
+              class="grade-snapshot-item grade-<%= grade["letter"][0].downcase %>"
               href="#grade-course-<%= h grade["course_id"] %>"
               style="--grade-progress: <%= [[grade["percentage"], 0].max, 100].min %>%"
             >
@@ -395,7 +395,7 @@
               </div>
               <div class="grade-score">
                 <strong><%= h format_number(review_entry["score"]) %> / <%= h format_number(review_entry["points_possible"]) %></strong>
-                <span><%= h grade_review_percentage_label(review_entry) %></span>
+                <%= grade_badge(percentage(review_entry["score"], review_entry["points_possible"]), label: grade_review_percentage_label(review_entry)) %>
                 <% review_return_section = "unreviewed-grades" %>
                 <%= render_partial("grade_review_control", binding) %>
               </div>
@@ -797,7 +797,7 @@
 
           <div class="grade-trend-grid">
             <% grade_trend_data.each_with_index do |course, index| %>
-              <article class="grade-trend-course-card grade-<%= h course["letter"].downcase %>">
+              <article class="grade-trend-course-card <%= grade_css_class(course["current_percentage"]) %>">
                 <div class="grade-trend-course-copy">
                   <div>
                     <h4><%= h course["label"] %></h4>
@@ -884,7 +884,7 @@
           id="grade-course-<%= h course_id %>"
         >
 
-          <div class="grade-header<%= displayed_letter&.match?(/\A[A-F]\z/) ? " grade-#{displayed_letter.downcase}" : "" %>">
+          <div class="grade-header <%= grade_css_class(displayed_percentage) %>">
 
             <div>
 
@@ -997,15 +997,14 @@
                   </strong>
 
                   <% if pct %>
-                    <span<%= pct == 100 ? ' class="perfect-score" title="Perfect score!"' : "" %>>
-                      <%= h(review_entry && grade_requires_review?(review_entry) ? grade_review_percentage_label(review_entry) : "#{pct}%") %>
-                    </span>
+                    <%= grade_badge(pct, label: review_entry && grade_requires_review?(review_entry) ? grade_review_percentage_label(review_entry) : nil) %>
                   <% end %>
 
                   <% if official_override && !submission["_custom_grade"] %>
                     <span class="canvas-grade-original">
                       Canvas:
                       <%= h format_number(submission["_canvas_score"]) %>/<%= h format_number(submission["_canvas_points_possible"]) %>
+                      <%= grade_badge(percentage(submission["_canvas_score"], submission["_canvas_points_possible"])) %>
                     </span>
                   <% end %>
 
@@ -1084,6 +1083,10 @@
       const formatNumber = (value) => (
         Number.isInteger(value) ? value.toString() : value.toFixed(1)
       );
+      const gradeStyles = getComputedStyle(document.documentElement);
+      const gradeColor = (letter) => gradeStyles.getPropertyValue({
+        A: "--success", B: "--info", C: "--warning", D: "--orange", F: "--danger"
+      }[letter?.[0]] || "--muted").trim();
       const trendTimestamps = trendData.flatMap((course) => (
         course.points.map((point) => point.x)
       ));
@@ -1181,6 +1184,9 @@
               },
               tooltip: {
                 displayColors: false,
+                footerColor(context) {
+                  return gradeColor(context.tooltip.dataPoints?.[0]?.raw.letter);
+                },
                 filter(context) {
                   const points = context.dataset.data;
                   const index = context.dataIndex;
@@ -1188,6 +1194,9 @@
                   return index === 0 || points[index].y !== points[index - 1].y;
                 },
                 callbacks: {
+                  labelTextColor(context) {
+                    return gradeColor(context.raw.assignment_letter);
+                  },
                   title(items) {
                     const point = items[0]?.raw;
 
@@ -1201,19 +1210,22 @@
                   label(context) {
                     const point = context.raw;
                     const assignmentPercentage = point.points_possible > 0
-                      ? ` (${formatNumber((point.score / point.points_possible) * 100)}%)`
+                      ? ` (${formatNumber((point.score / point.points_possible) * 100)}% · ${point.assignment_letter})`
                       : "";
 
                     return [
                       point.assignment,
-                      `Assignment: ${formatNumber(point.score)}/${formatNumber(point.points_possible)} pts${assignmentPercentage}`,
-                      `Course grade: ${formatNumber(point.y)}%`
+                      `Assignment: ${formatNumber(point.score)}/${formatNumber(point.points_possible)} pts${assignmentPercentage}`
                     ];
                   },
-                  afterLabel(context) {
-                    const point = context.raw;
+                  footer(items) {
+                    const point = items[0]?.raw;
+                    if (!point) return "";
 
-                    return `Running total: ${formatNumber(point.earned)}/${formatNumber(point.possible)} pts`;
+                    return [
+                      `Course grade: ${formatNumber(point.y)}% · ${point.letter}`,
+                      `Running total: ${formatNumber(point.earned)}/${formatNumber(point.possible)} pts`
+                    ];
                   }
                 }
               }

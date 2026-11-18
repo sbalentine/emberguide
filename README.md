@@ -79,6 +79,15 @@ it. Recent scores, points possible, dates, and percentages make the estimate
 easy to understand, while local grade editing supports corrections and work
 tracked outside Canvas.
 
+All calculated grades show a colored letter alongside the percentage. The scale
+is A+ at 97% and above, A at 94–<97%, and A- at 90–<94%, with the same
+7/4/0 breakpoints in the B (80s), C (70s), and D (60s) ranges. Scores below
+60% remain F. Letters use the calculated percentage before whole-number display
+rounding; extra credit above 100% remains A+. Work without positive possible
+points has no standalone percentage or letter.
+Perfect 100% assignment scores stand out with a gold badge and shimmer
+(disabled when reduced motion is preferred); other A+ scores keep the A color.
+
 ### Keep low grades on the radar until reviewed
 
 The dashboard's **Unreviewed Grades** section lists every saved assignment below
@@ -538,7 +547,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.14.2"
+version: "1.15.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

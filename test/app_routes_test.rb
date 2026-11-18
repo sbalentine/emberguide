@@ -1154,9 +1154,10 @@ class AppRoutesTest < Minitest::Test
   def test_low_grades_have_a_persistent_review_queue_and_review_controls_on_the_main_page
     $dashboard_data["grades"].first["score"] = 6
     $dashboard_data["grades"].first["graded_at"] = "2026-01-02T12:00:00Z"
-    body = request("/").body
+    body = request("/").body.force_encoding("UTF-8")
     queue = body[/<section class="card unreviewed-grades".*?<\/section>/m]
     assert_includes queue, "Unreviewed Grades (1)"
+    assert_includes queue, '<span class="grade-result grade-d">60.0% · D-</span>'
     assert_includes queue, "Quiz"
     assert_includes queue, "Mark reviewed"
     assert_equal 2, body.scan('action="/grades/review"').length

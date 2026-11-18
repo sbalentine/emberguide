@@ -111,6 +111,10 @@
               ).to_s
               override = overrides.fetch("canvas", {}).fetch(assignment_id, {})
               course_id = assignment["course_id"].to_s
+              edited_percentage = percentage(
+                override["score"] || submission["score"],
+                override["points_possible"] || assignment["points_possible"]
+              )
             %>
 
             <div class="assignment-grade-row<%= " is-edited" unless override.empty? %>">
@@ -128,8 +132,12 @@
                     No grade
                   <% else %>
                     <%= h format_number(submission["score"]) %>/<%= h format_number(assignment["points_possible"]) %>
+                    <%= grade_badge(percentage(submission["score"], assignment["points_possible"])) %>
                   <% end %>
                 </span>
+                <% unless override.empty? || override["hidden"] == true %>
+                  <%= grade_badge(edited_percentage, label: "Edited: #{format_number(edited_percentage)}%") %>
+                <% end %>
                 <label class="assignment-grade-hide">
                   <input
                     type="checkbox"
@@ -185,6 +193,7 @@
           <div class="custom-grade-row">
             <label class="custom-grade-name">
               <span>Assignment</span>
+              <%= grade_badge(percentage(grade["score"], grade["points_possible"])) %>
               <input
                 type="text"
                 name="custom_<%= h grade_id %>_name"

@@ -27,12 +27,33 @@ def letter_grade(percentage)
   return nil if percentage.nil?
 
   case percentage
-  when 90.. then "A"
-  when 80...90 then "B"
-  when 70...80 then "C"
-  when 60...70 then "D"
+  when 97.. then "A+"
+  when 94...97 then "A"
+  when 90...94 then "A-"
+  when 87...90 then "B+"
+  when 84...87 then "B"
+  when 80...84 then "B-"
+  when 77...80 then "C+"
+  when 74...77 then "C"
+  when 70...74 then "C-"
+  when 67...70 then "D+"
+  when 64...67 then "D"
+  when 60...64 then "D-"
   else "F"
   end
+end
+
+def grade_css_class(value)
+  letter = letter_grade(value)
+  letter ? "grade-#{letter[0].downcase}" : ""
+end
+
+def grade_badge(value, label: nil)
+  return "" if value.nil?
+
+  text = "#{label || "#{format_number(value)}%"} · #{letter_grade(value)}"
+  perfect = value == 100
+  %(<span class="grade-result #{grade_css_class(value)}#{' perfect-score' if perfect}"#{' title="Perfect score!"' if perfect}>#{h text}</span>)
 end
 
 def grade_trend_points(submissions)
@@ -64,6 +85,8 @@ def grade_trend_points(submissions)
     {
       "x" => recorded_at.to_i * 1000,
       "y" => calculated,
+      "letter" => letter_grade(calculated),
+      "assignment_letter" => letter_grade(percentage(score, points_possible)),
       "assignment" => assignment["name"],
       "score" => score,
       "points_possible" => points_possible,

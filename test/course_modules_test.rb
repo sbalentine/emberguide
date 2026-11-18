@@ -308,6 +308,11 @@ class CourseModulesTest < Minitest::Test
     end
     assert_equal "8/10", module_item_score(graded.call(8.0))
     assert_equal "9.5/10", module_item_score(graded.call(9.5))
+    assert_equal '<span class="grade-result grade-a">95% · A</span>',
+      module_item_grade_badge(graded.call(9.5))
+    assert_equal "", module_item_grade_badge(graded.call(7, 0))
+    assert_equal "", module_item_grade_badge(graded.call(7, nil))
+    assert_equal "", module_item_grade_badge(graded.call(nil))
     assert_equal "7", module_item_score(graded.call(7.0, nil))
     assert_nil module_item_score(graded.call(nil))
     assert_nil module_item_score({ "submission" => { "workflow_state" => "submitted", "submitted_at" => "x", "score" => 4 } })
@@ -315,6 +320,8 @@ class CourseModulesTest < Minitest::Test
 
     overrides = { "canvas" => { "5" => { "score" => 10, "points_possible" => 12 } } }
     assert_equal "10/12", module_item_score(graded.call(8.0), overrides)
+    assert_equal '<span class="grade-result grade-b">83.3% · B-</span>',
+      module_item_grade_badge(graded.call(8.0), overrides)
     assert_equal "8/10", module_item_score(graded.call(8.0), { "canvas" => { "5" => { "hidden" => true } } })
   end
 

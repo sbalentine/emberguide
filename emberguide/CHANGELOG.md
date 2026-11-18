@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.0
+
+- Show colored plus/minus letter grades consistently across course summaries, assignment scores, grade reviews, modules, the grade editor, and chart tooltips.
+- Use 97/94/90 breakpoints for A+/A/A-, repeated for B, C, and D; retain F below 60%.
+- Highlight perfect 100% scores with glowing gold badges and a reduced-motion-aware shimmer.
+
 ## 1.14.2
 
 - Include zero-point extra-credit scores in grade chart totals, matching the grade snapshot.

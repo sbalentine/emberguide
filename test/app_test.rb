@@ -232,6 +232,18 @@ class AppTest < Minitest::Test
     html = template.result(binding)
 
     assert_operator html.index("Recent Quiz"), :<, html.index("Older Quiz")
+    assert_includes html, '<span class="grade-result grade-a">90% · A-</span>'
+    assert_includes html, '<span class="grade-result grade-b">80% · B-</span>'
+
+    overrides["canvas"]["11"] = { "score" => 9.7 }
+    overrides["custom"]["external"] = {
+      "name" => "External Quiz", "course_id" => "1",
+      "score" => 6.8, "points_possible" => 10, "graded_at" => "2026-10-02"
+    }
+    html = template.result(binding)
+    assert_includes html, '<span class="grade-result grade-a">90% · A-</span>'
+    assert_includes html, '<span class="grade-result grade-a">Edited: 97% · A+</span>'
+    assert_includes html, '<span class="grade-result grade-d">68% · D+</span>'
   end
 
   def test_dashboard_renders_grade_snapshot_with_whole_percentage_and_letter
@@ -246,6 +258,7 @@ class AppTest < Minitest::Test
       "grades" => [{
         "assignment_id" => 10,
         "score" => 10,
+        "graded_at" => "2026-10-01T12:00:00Z",
         "assignment" => {
           "id" => 10,
           "course_id" => 1,
@@ -263,9 +276,20 @@ class AppTest < Minitest::Test
     assert_includes html, "6th Grade Science"
     assert_includes html, "grade-snapshot-item grade-a"
     assert_includes html, "<strong>100%</strong>"
-    assert_includes html, "grade-snapshot-letter\">A"
+    assert_includes html, 'grade-snapshot-letter">A+</span>'
+    assert_includes html, 'grade-header grade-a'
+    assert_includes html, 'grade-trend-course-card grade-a'
+    assert_includes html, '<span class="grade-result grade-a perfect-score" title="Perfect score!">100% · A+</span>'
     assert_includes html, 'href="#grade-course-1"'
     assert_includes html, 'id="grade-course-1"'
+
+    data["grades"].first["score"] = 8.99
+    html = template.result(binding)
+    assert_includes html, 'grade-snapshot-item grade-b'
+    assert_includes html, 'grade-snapshot-letter">B+</span>'
+    assert_includes html, 'grade-header grade-b'
+    assert_includes html, 'grade-trend-course-card grade-b'
+    assert_includes html, '<span class="grade-result grade-b">89.9% · B+</span>'
   end
 
   def test_grade_snapshot_and_chart_include_extra_credit_and_display_the_same_percentage
@@ -297,10 +321,10 @@ class AppTest < Minitest::Test
     assert_equal 87.1, trend["current_percentage"]
     assert_equal 27.0, trend["points"].last["earned"]
     assert_equal 31.0, trend["points"].last["possible"]
-    assert_equal "B", trend["letter"]
+    assert_equal "B+", trend["letter"]
     assert_includes snapshot, "<strong>87%</strong>"
-    assert_includes snapshot, 'grade-snapshot-letter">B'
+    assert_includes snapshot, 'grade-snapshot-letter">B+</span>'
     assert_includes chart_current, "<strong>87%</strong>"
-    assert_includes chart_current, "<span>B</span>"
+    assert_includes chart_current, "<span>B+</span>"
   end
 end

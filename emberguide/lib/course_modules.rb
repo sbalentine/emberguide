@@ -447,9 +447,7 @@ def module_item_done?(item)
   %w[done late].include?(module_item_status(item)&.last)
 end
 
-# "8/10" for graded work, using a local grade correction when one exists so
-# modules agree with the dashboard's grades.
-def module_item_score(item, grade_overrides = {})
+def module_item_score_values(item, grade_overrides = {})
   return unless module_item_status(item)&.first == "Graded"
 
   override = grade_overrides.fetch("canvas", {})[module_item_assignment_id(item).to_s] || {}
@@ -457,7 +455,19 @@ def module_item_score(item, grade_overrides = {})
   possible = override["points_possible"].nil? ? item.dig("content_details", "points_possible") : override["points_possible"]
   return if score.nil?
 
+  [score, possible]
+end
+
+def module_item_score(item, grade_overrides = {})
+  score, possible = module_item_score_values(item, grade_overrides)
+  return if score.nil?
+
   possible.nil? ? format_number(score).to_s : "#{format_number(score)}/#{format_number(possible)}"
+end
+
+def module_item_grade_badge(item, grade_overrides = {})
+  score, possible = module_item_score_values(item, grade_overrides)
+  grade_badge(percentage(score, possible))
 end
 
 def module_item_due_tomorrow?(item, due, today: Date.today)

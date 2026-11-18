@@ -22,7 +22,7 @@
   <div class="module-item-meta">
     <% due = parse_canvas_time(item.dig("content_details", "due_at")) %>
     <% status_label, status_kind = module_item_status(item) %>
-    <% if status_label %><span class="module-status module-status-<%= h status_kind %>"><%= h [status_label, module_item_score(item, module_grade_overrides)].compact.join(" · ") %></span><% end %>
+    <% if status_label %><span class="module-status module-status-<%= h status_kind %>"><%= h [status_label, module_item_score(item, module_grade_overrides)].compact.join(" · ") %> <%= module_item_grade_badge(item, module_grade_overrides) %></span><% end %>
     <% if due %><span<%= ' class="module-due-tomorrow"' if module_item_due_tomorrow?(item, due) %>>Due <%= h date_label(due) %> &middot; <%= h due_time_label(due) %></span><% end %>
     <% if item.dig("completion_requirement", "completed") == true %>
       <span class="module-completed">Requirement complete</span>

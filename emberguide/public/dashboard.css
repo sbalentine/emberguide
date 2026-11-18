@@ -1856,17 +1856,36 @@ a:hover {
   font-size: 12px;
 }
 
-.grade-score .perfect-score {
+.grade-score .perfect-score,
+.grade-result.perfect-score {
   position: relative;
   display: inline-block;
   overflow: hidden;
   margin-top: 4px;
   padding: 2px 7px;
-  border: 1px solid #e8b931;
+  border: 1px solid #f4c84d;
   border-radius: 4px;
-  background: #fff7d6;
-  color: #8a5a00;
+  background: linear-gradient(135deg, #fff8db, #ffe18a);
+  color: #714500;
+  box-shadow: 0 0 0 1px rgba(232, 185, 49, 0.15),
+    0 0 16px rgba(232, 185, 49, 0.25);
   font-weight: 800;
+}
+
+.grade-result {
+  display: inline-block;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.grade-result.grade-a { color: var(--success); }
+.grade-result.grade-b { color: var(--info); }
+.grade-result.grade-c { color: var(--warning); }
+.grade-result.grade-d { color: var(--orange); }
+.grade-result.grade-f { color: var(--danger); }
+
+.grade-result.perfect-score {
+  color: #714500;
 }
 
 .perfect-score::after {
