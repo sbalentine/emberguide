@@ -258,7 +258,8 @@ def validate_backup_json(filename, value)
     when "grade_overrides.json"
       value.is_a?(Hash) &&
         value.fetch("canvas", {}).is_a?(Hash) &&
-        value.fetch("custom", {}).is_a?(Hash)
+        value.fetch("custom", {}).is_a?(Hash) &&
+        valid_course_grading?(value.fetch("grading", {}))
     when "hidden_courses.json"
       value.is_a?(Array)
     when "event_journal.json"
@@ -592,21 +593,18 @@ def digest_grade_snapshot(data, mappings, overrides)
   combined_grade_submissions(data, overrides)
     .group_by { |submission| submission.dig("assignment", "course_id").to_s }
     .filter_map do |course_id, submissions|
-      earned = submissions.sum { |submission| submission["score"].to_f }
-      possible = submissions.sum do |submission|
-        submission.dig("assignment", "points_possible").to_f
-      end
-      calculated = percentage(earned, possible)
-      next unless calculated
+      summary = course_grade_summary(submissions, course_grading_settings(overrides, course_id))
+      calculated = summary["percentage"]
+      next unless calculated || summary["error"]
 
       {
         "course_id" => course_id,
         "name" => digest_course_name(data, mappings, course_id),
-        "percentage" => calculated.round,
+        "percentage" => calculated&.round,
         "letter" => letter_grade(calculated)
-      }
+      }.tap { |grade| grade["error"] = summary["error"] if summary["error"] }
     end
-    .sort_by { |grade| [-grade["percentage"], grade["name"]] }
+    .sort_by { |grade| [grade["percentage"].nil? ? 1 : 0, -(grade["percentage"] || 0), grade["name"]] }
 end
 
 def digest_assignments_for(data, date)
@@ -787,7 +785,11 @@ def digest_text_body(digest, now)
     lines << "No graded assignments yet."
   else
     digest["grade_snapshot"].each do |grade|
-      lines << "#{grade["name"]}: #{grade["percentage"]}% (#{grade["letter"]})"
+      lines << if grade["error"]
+                 "#{grade["name"]}: #{grade["error"]}"
+               else
+                 "#{grade["name"]}: #{grade["percentage"]}% (#{grade["letter"]})"
+               end
     end
   end
 
@@ -982,6 +984,9 @@ def digest_html_body(digest, now, logo_src: "/emberguide-icon.png")
       '<p style="margin:0;color:#9b98b2;">No graded assignments yet.</p>'
     else
       cards = digest["grade_snapshot"].map do |grade|
+        if grade["error"]
+          next %(<td class="grade-card-cell" style="padding:13px;color:#ffc96b;">#{CGI.escapeHTML(grade["name"])}: #{CGI.escapeHTML(grade["error"])}</td>)
+        end
         colors = digest_grade_colors(grade["letter"])
         progress = [[grade["percentage"], 0].max, 100].min
         <<~HTML

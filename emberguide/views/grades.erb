@@ -16,6 +16,7 @@
     coursework["courses"].select do |id, _course|
       manual_selected_course_id.nil? || id == manual_selected_course_id
     end
+  grading_settings = course_grading_settings(overrides, selected_course_id)
 %>
 <!doctype html>
 <html>
@@ -69,6 +70,44 @@
     <form class="grade-settings" method="post" action="/settings/grades">
       <% if selected_course_id %>
         <input type="hidden" name="course_id" value="<%= h selected_course_id %>">
+      <% end %>
+
+      <% if selected_course_id %>
+        <section class="card course-grading-settings">
+          <h2>Course grading</h2>
+          <label>
+            <span>Grading method</span>
+            <select name="grading_mode">
+              <option value="points" <%= "selected" if grading_settings["mode"] == "points" %>>Total points (default)</option>
+              <option value="weighted" <%= "selected" if grading_settings["mode"] == "weighted" %>>Weighted categories</option>
+            </select>
+          </label>
+          <p class="settings-intro">
+            Define category weights for this class, then choose a category for each assignment below.
+            Within a category, grades use total earned / possible points. Active weights are normalized:
+            empty categories are skipped, and 0% categories never affect the course average.
+            The course average is withheld if any graded assignment needs a category.
+            Canvas score updates do not clear category choices. Clear a category's name and weight to remove it.
+          </p>
+          <div id="grading-categories">
+            <% (grading_settings["categories"].to_a + [[SecureRandom.uuid, { "name" => "", "weight" => nil }]]).each do |id, category| %>
+              <div class="grading-category-row" data-category-id="<%= h id %>">
+                <label>
+                  <span>Category name</span>
+                  <input name="grading_category_<%= h id %>_name" value="<%= h category["name"] %>" maxlength="80" data-category-name>
+                </label>
+                <label>
+                  <span>Weight (%)</span>
+                  <input type="number" name="grading_category_<%= h id %>_weight" value="<%= h category["weight"] %>" min="0" max="100" step="0.01" data-category-weight>
+                </label>
+              </div>
+            <% end %>
+          </div>
+          <button type="button" class="add-grade-row" id="add-grading-category">+ Add category</button>
+          <p class="settings-help">Weights may total less than 100% (for example 35%, 40%, and 0%), but not more than 100%.</p>
+        </section>
+      <% else %>
+        <p class="settings-help">Choose a class above to configure its grading method, category weights, and assignment categories.</p>
       <% end %>
 
       <section class="card">
@@ -177,6 +216,8 @@
                   placeholder="<%= h format_number(assignment["points_possible"]) %>"
                 >
               </label>
+              <% grade_category_prefix = "canvas_#{assignment_id}"; grade_category_key = "canvas-#{assignment_id}" %>
+              <%= render_partial("grade_category_select", binding) %>
             </div>
           <% end %>
         </div>
@@ -250,6 +291,8 @@
                 value="<%= h grade["graded_at"] %>"
               >
             </label>
+            <% grade_category_prefix = "custom_#{grade_id}"; grade_category_key = "custom-#{grade_id}" %>
+            <%= render_partial("grade_category_select", binding) %>
           </div>
         <% end %>
 
@@ -313,6 +356,8 @@
             >
               ×
             </button>
+            <% grade_category_prefix = "new_0"; grade_category_key = nil %>
+            <%= render_partial("grade_category_select", binding) %>
           </div>
         </div>
 
@@ -384,6 +429,8 @@
             >
               ×
             </button>
+            <% grade_category_prefix = "new___INDEX__"; grade_category_key = nil %>
+            <%= render_partial("grade_category_select", binding) %>
           </div>
         </template>
       </section>
@@ -544,6 +591,7 @@
 
       newGrades.insertAdjacentHTML("beforeend", html);
       nextGradeIndex += 1;
+      updateCategoryChoices();
 
       newGrades.lastElementChild.querySelector('input[type="text"]').focus();
     });
@@ -554,6 +602,39 @@
 
       removeButton.closest(".new-custom-grade").remove();
     });
+
+    const categoryRows = document.getElementById("grading-categories");
+    function updateCategoryChoices() {
+      if (!categoryRows) return;
+      const categories = [...categoryRows.querySelectorAll("[data-category-id]")].map((row) => ({
+        id: row.dataset.categoryId,
+        name: row.querySelector("[data-category-name]").value.trim(),
+        weight: row.querySelector("[data-category-weight]").value
+      })).filter((category) => category.name);
+      document.querySelectorAll("[data-grade-category]").forEach((select) => {
+        const selected = select.value;
+        select.replaceChildren(new Option("Unassigned", ""));
+        categories.forEach((category) => {
+          select.add(new Option(`${category.name} (${category.weight || "0"}%)`, category.id));
+        });
+        select.value = categories.some((category) => category.id === selected) ? selected : "";
+      });
+    }
+    if (categoryRows) {
+      categoryRows.addEventListener("input", updateCategoryChoices);
+      let nextCategoryIndex = 0;
+      document.getElementById("add-grading-category").addEventListener("click", () => {
+        const row = categoryRows.firstElementChild.cloneNode(true);
+        const id = `new-${Date.now()}-${nextCategoryIndex++}`;
+        row.dataset.categoryId = id;
+        row.querySelectorAll("input").forEach((input) => {
+          input.name = `grading_category_${id}_${input.hasAttribute("data-category-name") ? "name" : "weight"}`;
+          input.value = "";
+        });
+        categoryRows.append(row);
+        row.querySelector("input").focus();
+      });
+    }
   </script>
 </body>
 </html>

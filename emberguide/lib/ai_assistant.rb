@@ -477,12 +477,14 @@ def ai_grade_lines(data, course_names, overrides)
   grades = combined_grade_submissions(data, overrides)
   by_course = grades.group_by { |submission| submission.dig("assignment", "course_id").to_s }
   summary = by_course.filter_map do |course_id, submissions|
-    earned = submissions.sum { |submission| submission["score"].to_f }
-    possible = submissions.sum { |submission| submission.dig("assignment", "points_possible").to_f }
-    value = percentage(earned, possible)
+    result = course_grade_summary(submissions, course_grading_settings(overrides, course_id))
+    name = course_names[course_id] || course_id
+    next "- #{name}: #{result["error"]}" if result["error"]
+
+    value = result["percentage"]
     next unless value
 
-    "- #{course_names[course_id] || course_id}: #{value.round}% (#{letter_grade(value)}), #{submissions.length} graded"
+    "- #{name}: #{value.round}% (#{letter_grade(value)}), #{submissions.length} graded"
   end.sort
 
   recent = grades.sort_by { |submission| submission["graded_at"].to_s }.last(AI_RECENT_GRADES).reverse

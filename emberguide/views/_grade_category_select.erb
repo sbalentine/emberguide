@@ -1,0 +1,13 @@
+<% if selected_course_id %>
+  <label class="grade-category-field">
+    <span>Grade category</span>
+    <select name="<%= h grade_category_prefix %>_category" data-grade-category>
+      <option value="">Unassigned</option>
+      <% grading_settings["categories"].each do |id, category| %>
+        <option value="<%= h id %>" <%= "selected" if grading_settings["assignments"][grade_category_key] == id %>>
+          <%= h category["name"] %> (<%= h format_number(category["weight"]) %>%)
+        </option>
+      <% end %>
+    </select>
+  </label>
+<% end %>

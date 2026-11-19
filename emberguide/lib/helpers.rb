@@ -56,7 +56,7 @@ def grade_badge(value, label: nil)
   %(<span class="grade-result #{grade_css_class(value)}#{' perfect-score' if perfect}"#{' title="Perfect score!"' if perfect}>#{h text}</span>)
 end
 
-def grade_trend_points(submissions)
+def grade_trend_points(submissions, grading: nil)
   chronological = Array(submissions).filter_map do |submission|
     assignment = submission["assignment"] || {}
     recorded_at = parse_canvas_time(
@@ -72,6 +72,7 @@ def grade_trend_points(submissions)
 
   earned = 0.0
   possible = 0.0
+  running_submissions = []
 
   chronological.filter_map do |recorded_at, submission|
     assignment = submission["assignment"]
@@ -79,7 +80,13 @@ def grade_trend_points(submissions)
     points_possible = assignment["points_possible"].to_f
     earned += score
     possible += points_possible
-    calculated = percentage(earned, possible)
+    running_submissions << submission
+    calculated =
+      if grading && grading["mode"] == "weighted"
+        course_grade_summary(running_submissions, grading)["percentage"]
+      else
+        percentage(earned, possible)
+      end
     next unless calculated
 
     {

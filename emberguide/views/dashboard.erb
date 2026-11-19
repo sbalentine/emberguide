@@ -94,27 +94,31 @@
       grades_by_course = valid_grades.group_by do |submission|
         submission.dig("assignment", "course_id").to_s
       end
+      course_grade_summaries = grades_by_course.to_h do |course_id, submissions|
+        [course_id, course_grade_summary(submissions, course_grading_settings(grade_overrides, course_id))]
+      end
 
       grade_snapshot = grades_by_course.filter_map do |course_id, submissions|
-        earned = submissions.sum { |submission| submission["score"].to_f }
-        possible = submissions.sum do |submission|
-          submission.dig("assignment", "points_possible").to_f
-        end
-        calculated = percentage(earned, possible)
-        next unless calculated
+        summary = course_grade_summaries.fetch(course_id)
+        calculated = summary["percentage"]
+        next unless calculated || summary["error"]
 
         course_display_name = display_course_name.call(course_id)
 
         {
           "course_id" => course_id,
           "name" => course_display_name,
-          "percentage" => calculated.round,
-          "letter" => letter_grade(calculated)
+          "percentage" => calculated&.round,
+          "letter" => letter_grade(calculated),
+          "error" => summary["error"]
         }
       end.sort_by { |grade| grade["name"] }
 
       grade_trend_data = grades_by_course.filter_map do |course_id, submissions|
-        points = grade_trend_points(submissions)
+        next if course_grade_summaries.fetch(course_id)["error"]
+
+        grading = course_grading_settings(grade_overrides, course_id)
+        points = grade_trend_points(submissions, grading: grading)
         next if points.empty?
 
         current_percentage = points.last["y"]
@@ -267,17 +271,21 @@
         <div class="grade-snapshot-list">
           <% grade_snapshot.each do |grade| %>
             <a
-              class="grade-snapshot-item grade-<%= grade["letter"][0].downcase %>"
+              class="grade-snapshot-item <%= "grade-#{grade["letter"][0].downcase}" if grade["letter"] %>"
               href="#grade-course-<%= h grade["course_id"] %>"
-              style="--grade-progress: <%= [[grade["percentage"], 0].max, 100].min %>%"
+              style="--grade-progress: <%= [[grade["percentage"] || 0, 0].max, 100].min %>%"
             >
               <span class="grade-snapshot-details">
                 <span class="grade-snapshot-course">
                   <%= h grade["name"] %>
                 </span>
                 <span class="grade-snapshot-score">
-                  <strong><%= grade["percentage"] %>%</strong>
-                  <span class="grade-snapshot-letter"><%= grade["letter"] %></span>
+                  <% if grade["error"] %>
+                    <span><%= h grade["error"] %></span>
+                  <% else %>
+                    <strong><%= grade["percentage"] %>%</strong>
+                    <span class="grade-snapshot-letter"><%= grade["letter"] %></span>
+                  <% end %>
                 </span>
               </span>
               <span class="grade-snapshot-track" aria-hidden="true">
@@ -850,21 +858,11 @@
         <%
           submissions = grades_by_course.fetch(course_id, [])
 
-          earned = submissions.sum do |submission|
-            submission["score"].to_f
-          end
-
-          possible = submissions.sum do |submission|
-            submission.dig(
-              "assignment",
-              "points_possible"
-            ).to_f
-          end
-
-          calculated = percentage(
-            earned,
-            possible
-          )
+          grading_settings = course_grading_settings(grade_overrides, course_id)
+          grade_summary = course_grade_summary(submissions, grading_settings)
+          earned = grade_summary["earned"]
+          possible = grade_summary["possible"]
+          calculated = grade_summary["percentage"]
 
           displayed_percentage = calculated
           displayed_letter = letter_grade(displayed_percentage)
@@ -903,8 +901,13 @@
                   /
                   <%= h format_number(possible) %>
                   pts
+                  <%= " · Weighted categories" if grading_settings["mode"] == "weighted" %>
                 <% end %>
               </div>
+
+              <% if grade_summary["error"] %>
+                <p class="grading-warning" role="status"><%= h grade_summary["error"] %> <a href="/settings/grades?course_id=<%= h CGI.escape(course_id) %>">Set assignment categories</a></p>
+              <% end %>
 
               <a
                 class="grade-card-edit-link"
@@ -953,6 +956,7 @@
                 url = assignment["html_url"]
                 official_override = submission["_official_override"]
                 review_entry = grade_reviews[grade_review_key(assignment["course_id"], assignment_id(submission))]
+                grade_category = grading_settings["categories"][grading_settings["assignments"][grading_assignment_key(submission)]]
 
                 grade_class =
                   if pct && pct < 70
@@ -974,6 +978,9 @@
                       url,
                       assignment_saved_content(data, assignment["course_id"], assignment["id"], submission)
                     ) %>
+                    <% if grading_settings["mode"] == "weighted" && grade_category %>
+                      · <%= h grade_category["name"] %> (<%= h format_number(grade_category["weight"]) %>% course weight)
+                    <% end %>
                   </div>
 
                   <div class="assignment-course">

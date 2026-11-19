@@ -192,6 +192,13 @@ class EmailBackupsTest < Minitest::Test
     )
     save_grade_overrides(
       "canvas" => {},
+      "grading" => {
+        "manual-music" => {
+          "mode" => "weighted",
+          "categories" => { "performance" => { "name" => "Performance", "weight" => 100 } },
+          "assignments" => { "custom-concert" => "performance" }
+        }
+      },
       "custom" => {
         "concert" => {
           "course_id" => "manual-music",
@@ -256,6 +263,7 @@ class EmailBackupsTest < Minitest::Test
       "name"
     )
     assert_equal "Algebra", load_course_name_mappings["1"]
+    assert_equal "performance", load_grade_overrides.dig("grading", "manual-music", "assignments", "custom-concert")
     assert_equal ["2"], load_hidden_course_ids
     assert_equal(
       "https://calendar.example.test/school.ics",

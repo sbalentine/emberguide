@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.0
+
+- Add opt-in per-class category-weighted grading with category selectors for Canvas and manually entered assignments.
+- Use weighted course averages consistently in dashboard summaries, cumulative trends, daily digests, and Spark grade context.
+- Preserve category choices through Canvas score refreshes and backups; keep total-points grading as the default.
+- Exclude zero-weight and empty categories from course averages, count extra credit within its category, and withhold averages with an explicit warning when graded work needs a category.
+
 ## 1.15.0
 
 - Show colored plus/minus letter grades consistently across course summaries, assignment scores, grade reviews, modules, the grade editor, and chart tooltips.

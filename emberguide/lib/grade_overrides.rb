@@ -19,27 +19,36 @@ def load_grade_overrides
   overrides = JSON.parse(File.read(GRADE_OVERRIDES_FILE))
   return {} unless overrides.is_a?(Hash)
 
-  {
+  result = {
     "canvas" => overrides["canvas"].is_a?(Hash) ? overrides["canvas"] : {},
     "custom" => overrides["custom"].is_a?(Hash) ? overrides["custom"] : {}
   }
+  if overrides.key?("grading")
+    raise CourseGradingError, "Saved class grading settings are invalid. Restore a backup or repair the settings file." unless valid_course_grading?(overrides["grading"])
+
+    result["grading"] = overrides["grading"]
+  end
+  result
 rescue JSON::ParserError => e
   puts "Unable to load official grades: #{e.message}"
   {}
 end
 
 def save_grade_overrides(overrides)
+  if overrides.key?("grading") && !valid_course_grading?(overrides["grading"])
+    raise ArgumentError, "Invalid class grading settings."
+  end
   FileUtils.mkdir_p(File.dirname(GRADE_OVERRIDES_FILE))
 
+  saved = {
+    "canvas" => overrides.fetch("canvas", {}).sort.to_h,
+    "custom" => overrides.fetch("custom", {}).sort.to_h
+  }
+  saved["grading"] = overrides["grading"] if overrides.key?("grading")
   temporary_file = "#{GRADE_OVERRIDES_FILE}.tmp.#{$$}"
   File.write(
     temporary_file,
-    JSON.pretty_generate(
-      {
-        "canvas" => overrides.fetch("canvas", {}).sort.to_h,
-        "custom" => overrides.fetch("custom", {}).sort.to_h
-      }
-    )
+    JSON.pretty_generate(saved)
   )
   File.rename(temporary_file, GRADE_OVERRIDES_FILE)
 end

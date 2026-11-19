@@ -19,6 +19,48 @@ Minitest.after_run do
 end
 
 class AppRoutesTest < Minitest::Test
+  def test_class_weighted_grading_saves_categories_and_handles_new_uncategorized_work
+    fields = {
+      "course_id" => "1", "grading_mode" => "weighted",
+      "grading_category_quiz_name" => "Quizzes", "grading_category_quiz_weight" => "35",
+      "grading_category_work_name" => "Classwork", "grading_category_work_weight" => "40",
+      "grading_category_home_name" => "Homework", "grading_category_home_weight" => "0",
+      "canvas_10_category" => "quiz",
+      "new_0_name" => "Paper", "new_0_score" => "10", "new_0_points" => "10",
+      "new_0_course_id" => "1", "new_0_date" => "2026-10-02", "new_0_category" => "work"
+    }
+    assert_equal "303", request("/settings/grades", Net::HTTP::Post, fields).code
+    saved = load_grade_overrides
+    custom_id = saved["custom"].keys.first
+    assert_equal "work", saved.dig("grading", "1", "assignments", "custom-#{custom_id}")
+    assert_equal "quiz", saved.dig("grading", "1", "assignments", "canvas-10")
+    editor = request("/settings/grades?course_id=1")
+    assert_equal "200", editor.code
+    assert_includes editor.body, 'name="grading_mode"'
+    assert_match(/value="weighted"\s+selected/, editor.body)
+    assert_match(/value="quiz"\s+selected/, editor.body)
+
+    body = request("/").body
+    assert_includes body, "Weighted categories"
+    assert_includes body, "90.7%"
+    digest = digest_grade_snapshot($dashboard_data, {}, saved).first
+    assert_equal 91, digest["percentage"]
+
+    invalid_fields = fields.merge("grading_category_quiz_weight" => "80")
+    assert_equal "422", request("/settings/grades", Net::HTTP::Post, invalid_fields).code
+    assert_equal saved, load_grade_overrides
+    $dashboard_data["grades"] << {
+      "assignment_id" => 11, "score" => 9, "graded_at" => "2026-10-03T12:00:00Z",
+      "assignment" => { "id" => 11, "course_id" => 1, "name" => "New Quiz", "points_possible" => 10 }
+    }
+    body = request("/").body
+    assert_includes body, "Category needed for 1 graded assignment"
+    card = body[/id="grade-course-1".*?<\/section>/m]
+    refute_includes card, 'class="grade-value"'
+    refute_includes body, 'data-grade-trend-index="0"'
+    assert_includes digest_grade_snapshot($dashboard_data, {}, saved).first["error"], "Category needed"
+  end
+
   def test_modules_browsing_is_read_only_and_escapes_canvas_text
     $dashboard_data["modules"] = {
       "1" => [{

@@ -411,9 +411,41 @@ changes stay inside EmberGuide and never modify the Canvas gradebook.
 The assignment editor also lists ungraded and upcoming Canvas work, so an
 in-class activity or reminder can be hidden without assigning it a score.
 
-> **Grade estimates:** EmberGuide calculates percentages from assignments
-> available through the API. Weighted groups, grading periods, dropped work,
-> and other teacher gradebook rules can make the official Canvas grade differ.
+#### Per-class weighted grading
+
+Open **Edit this class → Course grading** to choose **Weighted categories**
+instead of the default **Total points**. Add category names and percentage
+weights, then select a **Grade category** for each Canvas or manually entered
+assignment. Save the settings and grades together.
+
+Each category uses its total earned points divided by its possible points.
+Course averages combine those percentages using the configured weights, rather
+than giving every assignment an individual weight. For example, weights of
+35% for quizzes and 40% for classwork are normalized over their combined 75%
+while those are the active categories. Weights must total no more than 100%.
+
+Categories without positive possible points are skipped until point-bearing
+grades arrive. A 0% category remains visible but never affects the course
+average. Zero-point extra credit contributes earned points within its assigned
+category once that category has point-bearing work. Hidden assignments stay
+excluded. Assignment percentages and low-grade review rules do not change.
+
+If a graded assignment has no category, EmberGuide explicitly shows **Category
+needed** and withholds the course average and trend instead of silently
+ignoring the assignment or falling back to total points. New Canvas grades may
+need categorization after a refresh. Saved category choices survive Canvas
+score updates and remain available when switching back to total points.
+
+The dashboard, cumulative trends, daily digest snapshots, and Spark grade
+context use the same calculation. Grading settings and assignment categories
+are stored in `grade_overrides.json` and included in normal backups/restores.
+Configuration is local to EmberGuide; weights are not imported automatically
+from Canvas or sent back to either school gradebook.
+
+> **Grade estimates:** EmberGuide calculates percentages from available
+> assignments using total points or your configured category weights. Grading
+> periods, dropped work, rounding, and other teacher gradebook rules can still
+> make the official grade differ.
 
 ### 🧩 One place for every class
 
@@ -547,7 +579,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.15.0"
+version: "1.16.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

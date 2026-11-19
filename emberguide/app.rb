@@ -23,6 +23,7 @@ end
 
 require_relative "lib/canvas"
 require_relative "lib/helpers"
+require_relative "lib/course_grading"
 require_relative "lib/achievement_history"
 require_relative "lib/student_settings"
 require_relative "lib/course_name_mappings"
@@ -1338,6 +1339,7 @@ rescue ArgumentError, TypeError
 end
 
 def grade_override_fields(request, data, existing, course_id: nil)
+  category_fields = {}
   target_submissions = editable_canvas_submissions(data).select do |submission|
     course_id.nil? ||
       submission.dig("assignment", "course_id").to_s == course_id
@@ -1365,6 +1367,7 @@ def grade_override_fields(request, data, existing, course_id: nil)
       submission.dig("assignment", "id")
 
     next unless assignment_id
+    category_fields["canvas-#{assignment_id}"] = "canvas_#{assignment_id}_category"
 
     score_value =
       request.query["canvas_#{assignment_id}_score"].to_s.strip
@@ -1413,6 +1416,7 @@ def grade_override_fields(request, data, existing, course_id: nil)
       valid_course_ids,
       name
     )
+    category_fields["custom-#{grade_id}"] = "custom_#{grade_id}_category"
   end
 
   new_grade_indices = request.query.keys.filter_map do |key|
@@ -1424,15 +1428,27 @@ def grade_override_fields(request, data, existing, course_id: nil)
     name = request.query["#{prefix}_name"].to_s.strip
     next if name.empty?
 
-    custom[SecureRandom.uuid] = custom_grade_fields(
+    grade_id = SecureRandom.uuid
+    custom[grade_id] = custom_grade_fields(
       request,
       prefix,
       valid_course_ids,
       name
     )
+    category_fields["custom-#{grade_id}"] = "#{prefix}_category"
   end
 
-  { "canvas" => canvas, "custom" => custom }
+  result = { "canvas" => canvas, "custom" => custom }
+  result["grading"] = existing["grading"].dup if existing.key?("grading")
+  if request.query.key?("grading_mode")
+    raise ArgumentError, "Select a class before changing its grading settings." unless course_id
+
+    result["grading"] ||= {}
+    result["grading"][course_id] = course_grading_fields(
+      request.query, existing, course_id, category_fields
+    )
+  end
+  result
 end
 
 def custom_grade_fields(request, prefix, valid_course_ids, name)
