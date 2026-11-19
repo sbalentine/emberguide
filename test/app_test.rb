@@ -291,6 +291,17 @@ class AppTest < Minitest::Test
     assert_includes html, 'grade-header grade-b'
     assert_includes html, 'grade-trend-course-card grade-b'
     assert_includes html, '<span class="grade-result grade-b">89.9% · B+</span>'
+    assert_includes html, '<span class="grade-value">90%</span>'
+
+    data["grades"].first["score"] = 8.94
+    html = template.result(binding)
+    assert_includes html, '<span class="grade-value">89%</span>'
+    assert_includes html, '<span class="grade-result grade-b">89.4% · B+</span>'
+
+    data["grades"].first["score"] = 8.95
+    html = template.result(binding)
+    assert_includes html, '<span class="grade-value">90%</span>'
+    assert_includes html, '<span class="grade-result grade-b">89.5% · B+</span>'
   end
 
   def test_grade_snapshot_and_chart_include_extra_credit_and_display_the_same_percentage
@@ -327,5 +338,6 @@ class AppTest < Minitest::Test
     assert_includes snapshot, 'grade-snapshot-letter">B+</span>'
     assert_includes chart_current, "<strong>87%</strong>"
     assert_includes chart_current, "<span>B+</span>"
+    assert_includes html, '<span class="grade-value">87%</span>'
   end
 end

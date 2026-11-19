@@ -451,6 +451,10 @@ grades arrive. A 0% category remains visible but never affects the course
 average. Zero-point extra credit contributes earned points within its assigned
 category once that category has point-bearing work. Hidden assignments stay
 excluded. Assignment percentages and low-grade review rules do not change.
+Summed course percentages in headers display rounded to the nearest whole
+number, matching snapshots and trend headers. Individual assignment percentages
+retain their nearest-tenth precision. Calculations, chart tooltips, plotted
+values, and letter-grade thresholds are unchanged.
 
 If a graded assignment has no category, the weighted average and trend use
 categorized work only. A small amber **!** beside the provisional grade explains
@@ -605,7 +609,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.17.0"
+version: "1.17.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

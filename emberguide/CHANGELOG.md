@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.1
+
+- Round summed class-header percentages to the nearest whole number, matching grade snapshots and trend headers.
+- Keep individual assignment grades at their existing nearest-tenth precision without changing calculations, chart tooltips, or letter-grade thresholds.
+
 ## 1.17.0
 
 - Add an off-by-default Spark setting to automatically categorize new and previously uncategorized scored assignments during Canvas refresh.

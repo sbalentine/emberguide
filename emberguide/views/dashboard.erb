@@ -929,7 +929,7 @@
 
             <div class="grade-percent">
               <% if displayed_percentage %>
-                <span class="grade-value"><%= h format_number(displayed_percentage) %>%</span>
+                <span class="grade-value"><%= h displayed_percentage.round %>%</span>
               <% end %>
               <% if displayed_letter %>
                 <span class="grade-letter"><%= h displayed_letter %></span>

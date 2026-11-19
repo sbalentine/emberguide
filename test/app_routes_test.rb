@@ -42,7 +42,11 @@ class AppRoutesTest < Minitest::Test
 
     body = request("/").body
     assert_includes body, "Weighted categories"
-    assert_includes body, "90.7%"
+    assert_includes body, 'class="grade-value">91%'
+    assert_equal 90.7, course_grade_summary(
+      combined_grade_submissions($dashboard_data, saved),
+      course_grading_settings(saved, "1")
+    )["percentage"]
     digest = digest_grade_snapshot($dashboard_data, {}, saved).first
     assert_equal 91, digest["percentage"]
 
@@ -56,7 +60,7 @@ class AppRoutesTest < Minitest::Test
     body = request("/").body
     assert_includes body, "Provisional grade: 1 uncategorized graded assignment excluded"
     card = body[/id="grade-course-1".*?<\/section>/m]
-    assert_includes card, 'class="grade-value">90.7%'
+    assert_includes card, 'class="grade-value">91%'
     assert_match(/class="grade-update-marker"\s+href="\/settings\/grades\?course_id=1"/, card)
     refute_includes card, 'class="grading-warning"'
     assert_includes body, 'data-grade-trend-index="0"'
