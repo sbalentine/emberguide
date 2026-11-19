@@ -268,6 +268,7 @@ class AppTest < Minitest::Test
       }]
     }
 
+    $dashboard_data = data
     template = ERB.new(File.read(File.join(APP_ROOT, "views", "dashboard.erb")))
     html = template.result(binding)
 
