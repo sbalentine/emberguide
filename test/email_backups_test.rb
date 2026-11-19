@@ -427,13 +427,17 @@ class EmailBackupsTest < Minitest::Test
   def test_backup_restores_parent_context_and_model
     save_spark_model("local-model", ["local-model"])
     save_spark_context("Grade 7", "1" => "Unit 2 covers proportional relationships.")
+    update_spark_settings { |settings| settings["auto_classify_grades"] = true }
     archive = build_backup_archive
     save_spark_context("Changed", {})
+    update_spark_settings { |settings| settings["auto_classify_grades"] = false }
     assert_includes restore_backup_archive(archive), "spark_settings.json"
     assert_equal "Grade 7", load_spark_settings["student_context"]
     assert_equal "local-model", load_spark_settings["model"]
+    assert load_spark_settings["auto_classify_grades"]
     assert_includes load_spark_settings.dig("course_context", "1"), "proportional relationships"
     assert_raises(BackupRestoreError) { validate_backup_json("spark_settings.json", "student_context" => []) }
+    assert_raises(BackupRestoreError) { validate_backup_json("spark_settings.json", "auto_classify_grades" => "true") }
   ensure
     FileUtils.rm_f(SPARK_SETTINGS_FILE)
   end

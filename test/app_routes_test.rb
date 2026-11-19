@@ -76,6 +76,32 @@ class AppRoutesTest < Minitest::Test
     assert_includes body, "93%"
   end
 
+  def test_weighted_category_labels_are_compact_colored_and_separate_from_titles
+    fields = {
+      "course_id" => "1", "grading_mode" => "weighted",
+      "grading_category_quiz_name" => "Formative Assessments", "grading_category_quiz_weight" => "35",
+      "grading_category_home_name" => "Homework <Notes>", "grading_category_home_weight" => "0",
+      "canvas_10_category" => "quiz",
+      "new_0_name" => "Paper", "new_0_score" => "5", "new_0_points" => "5",
+      "new_0_course_id" => "1", "new_0_date" => "2026-10-02", "new_0_category" => "home"
+    }
+    assert_equal "303", request("/settings/grades", Net::HTTP::Post, fields).code
+    body = request("/").body
+    labels = body.scan(/<span class="grade-category-label grade-[abcdf]">.*?<\/span>/)
+    assert_includes labels, '<span class="grade-category-label grade-a">Formative Assessments (35%)</span>'
+    assert_includes labels, '<span class="grade-category-label grade-b">Homework &lt;Notes&gt; (0%)</span>'
+    titles = body.scan(/<div class="assignment-title">(.*?)<\/div>/m).flatten.join
+    refute_includes titles, "Formative Assessments"
+    refute_includes titles, "Homework &lt;Notes&gt;"
+    refute_includes body, "% course weight"
+    assert_equal labels, request("/").body.scan(/<span class="grade-category-label grade-[abcdf]">.*?<\/span>/)
+
+    overrides = load_grade_overrides
+    overrides["grading"]["1"]["mode"] = "points"
+    save_grade_overrides(overrides)
+    refute_includes request("/").body, 'class="grade-category-label'
+  end
+
   def test_modules_browsing_is_read_only_and_escapes_canvas_text
     $dashboard_data["modules"] = {
       "1" => [{
@@ -274,6 +300,37 @@ class AppRoutesTest < Minitest::Test
     assert_includes rejected.body, "Keep this draft"
     assert_equal saved, load_spark_settings
   ensure
+    FileUtils.rm_f(SPARK_SETTINGS_FILE)
+  end
+
+  def test_automatic_grade_category_toggle_persists_without_an_online_model
+    saved_url = ENV["LLM_URL"]
+    ENV["LLM_URL"] = "http://127.0.0.1:1"
+    save_spark_model("saved-model", ["saved-model"])
+    save_spark_context("Keep this context", {})
+    response = request("/settings/spark", Net::HTTP::Post,
+      "action" => "grade_classification", "auto_classify_grades" => "true")
+    assert_equal "303", response.code
+    assert_equal "/settings/spark?saved=classification", URI(response["Location"]).request_uri
+    assert load_spark_settings["auto_classify_grades"]
+    assert_equal "saved-model", load_spark_settings["model"]
+    assert_equal "Keep this context", load_spark_settings["student_context"]
+    page = request("/settings/spark?saved=classification")
+    assert_includes page.body, "Automatic grade category setting saved."
+    assert_match(/name="auto_classify_grades" value="true"\s+checked/, page.body)
+    invalid = request("/settings/spark", Net::HTTP::Post,
+      "action" => "grade_classification", "auto_classify_grades" => "yes")
+    assert_equal "422", invalid.code
+    assert_includes invalid.body, "Automatic grade category setting not saved."
+    assert load_spark_settings["auto_classify_grades"]
+    ENV.delete("LLM_URL")
+    assert_equal "303", request("/settings/spark", Net::HTTP::Post, "action" => "grade_classification").code
+    refute load_spark_settings["auto_classify_grades"]
+    assert_equal "422", request("/settings/spark", Net::HTTP::Post,
+      "action" => "grade_classification", "auto_classify_grades" => "true").code
+    refute load_spark_settings["auto_classify_grades"]
+  ensure
+    ENV["LLM_URL"] = saved_url
     FileUtils.rm_f(SPARK_SETTINGS_FILE)
   end
 

@@ -60,16 +60,17 @@ def load_spark_settings
   saved = JSON.parse(File.read(SPARK_SETTINGS_FILE))
   raise AiUnavailable, "Saved Spark settings are invalid. Restore a backup or repair the settings file." unless valid_spark_settings?(saved)
 
-  { "model" => "", "student_context" => "", "course_context" => {} }.merge(saved)
+  { "model" => "", "student_context" => "", "course_context" => {}, "auto_classify_grades" => false }.merge(saved)
 rescue Errno::ENOENT
-  { "model" => "", "student_context" => "", "course_context" => {} }
+  { "model" => "", "student_context" => "", "course_context" => {}, "auto_classify_grades" => false }
 rescue JSON::ParserError, SystemCallError
   raise AiUnavailable, "Saved Spark settings couldn't be read. Check the app's storage or restore a backup."
 end
 
 def valid_spark_settings?(settings)
-  return false unless settings.is_a?(Hash) && (settings.keys - %w[model student_context course_context]).empty?
+  return false unless settings.is_a?(Hash) && (settings.keys - %w[model student_context course_context auto_classify_grades]).empty?
   return false unless settings.fetch("model", "").is_a?(String)
+  return false unless [true, false].include?(settings.fetch("auto_classify_grades", false))
 
   student = settings.fetch("student_context", "")
   courses = settings.fetch("course_context", {})

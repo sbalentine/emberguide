@@ -1,6 +1,8 @@
 require "fileutils"
 require "json"
 
+GRADE_OVERRIDES_MUTEX = Mutex.new
+
 GRADE_OVERRIDES_FILE =
   ENV.fetch("GRADE_OVERRIDES_FILE") do
     if File.directory?("/data")
@@ -84,6 +86,12 @@ def hide_assignments_from_dashboard(data, overrides)
 end
 
 def reconcile_canvas_grade_overrides(data)
+  GRADE_OVERRIDES_MUTEX.synchronize do
+    reconcile_canvas_grade_overrides_locked(data)
+  end
+end
+
+def reconcile_canvas_grade_overrides_locked(data)
   overrides = load_grade_overrides
   canvas_overrides = overrides.fetch("canvas", {})
   changed = false

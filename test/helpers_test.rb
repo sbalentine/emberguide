@@ -45,6 +45,22 @@ class HelpersTest < Minitest::Test
     refute_includes grade_badge(101), "perfect-score"
   end
 
+  def test_category_colors_follow_relative_weight_with_equal_weights_sharing_colors
+    categories = {
+      "zero" => { "weight" => 0 }, "middle" => { "weight" => 20 },
+      "top-b" => { "weight" => 28 }, "small" => { "weight" => 10 },
+      "tiny" => { "weight" => 6 }, "top-a" => { "weight" => 28 },
+      "smallest-a" => { "weight" => 4 }, "smallest-b" => { "weight" => 4 }
+    }
+    expected = {
+      "top-a" => "grade-a", "top-b" => "grade-a", "middle" => "grade-b",
+      "small" => "grade-c", "tiny" => "grade-d", "smallest-a" => "grade-f",
+      "smallest-b" => "grade-f", "zero" => "grade-f"
+    }
+    assert_equal expected, grade_category_css_classes(categories)
+    assert_equal expected, grade_category_css_classes(categories.to_a.reverse.to_h)
+  end
+
   def test_grade_trend_points_build_cumulative_percentages_in_date_order
     points = grade_trend_points([
       {

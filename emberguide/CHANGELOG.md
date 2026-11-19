@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.0
+
+- Add an off-by-default Spark setting to automatically categorize new and previously uncategorized scored assignments during Canvas refresh.
+- Let Spark choose its best match from each weighted class's existing categories and examples, while preserving scores, weights, manual choices, hidden work, and excluded assignments.
+- Retry unavailable or invalid classifications on later refreshes without blocking Canvas updates; include the setting in backups.
+- Move assignment categories out of titles into compact labels such as Formative Assessments (35%).
+- Color category labels by relative course weight using the A-to-F palette: green, blue, yellow, orange, then red; equal weights share a color.
+
 ## 1.16.1
 
 - Give course grading settings more breathing room with clearer label spacing, roomier controls, and more readable instructions.

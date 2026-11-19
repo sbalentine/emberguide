@@ -221,6 +221,7 @@ def refresh_dashboard
     end
     record_achievement_day(data)
     sync_grade_reviews
+    auto_classify_grade_categories(data)
 
     puts(
       "Canvas refresh successful at " \

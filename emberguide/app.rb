@@ -38,6 +38,7 @@ require_relative "lib/course_modules"
 require_relative "lib/assignment_details"
 require_relative "lib/school_calendar"
 require_relative "lib/ai_assistant"
+require_relative "lib/grade_classification"
 require_relative "lib/web_search"
 require_relative "lib/spark_history"
 require_relative "lib/email_backups"
@@ -463,11 +464,25 @@ server.mount_proc "/settings/spark" do |request, response|
   context_courses += saved_course_ids.map { |id| { "id" => id, "name" => "Saved class #{id} (not in current Canvas data)" } }
   spark_error = nil
   spark_context_error = false
-  model_listing = spark_settings["url"] ? ai_list_models(spark_settings) : {}
+  spark_classification_error = false
+  classification_post = request.request_method == "POST" && request.query["action"] == "grade_classification"
+  model_listing = spark_settings["url"] && !classification_post ? ai_list_models(spark_settings) : {}
   spark_models = Array(model_listing["models"])
 
   if request.request_method == "POST"
     begin
+      if classification_post
+        spark_classification_error = true
+        value = request.query.fetch("auto_classify_grades", "false")
+        raise ArgumentError, "Choose whether Spark should categorize new grades." unless %w[true false].include?(value)
+        raise ArgumentError, "Set up the Spark server first." if value == "true" && !spark_settings["url"]
+
+        parent_context = update_spark_settings { |settings| settings["auto_classify_grades"] = value == "true" }
+        response.status = 303
+        response["Location"] = "/settings/spark?saved=classification"
+        response.body = ""
+        next
+      end
       if request.query["action"] == "context"
         spark_context_error = true
         parent_context["student_context"] = request.query["student_context"].to_s
@@ -1516,14 +1531,16 @@ server.mount_proc "/settings/grades" do |request, response|
         update_manual_coursework(request)
         location = "/settings/grades"
       else
-        existing = load_grade_overrides
-        overrides = grade_override_fields(
-          request,
-          data,
-          existing,
-          course_id: selected_course_id
-        )
-        save_grade_overrides(overrides)
+        GRADE_OVERRIDES_MUTEX.synchronize do
+          existing = load_grade_overrides
+          overrides = grade_override_fields(
+            request,
+            data,
+            existing,
+            course_id: selected_course_id
+          )
+          save_grade_overrides(overrides)
+        end
         location = "/"
       end
 

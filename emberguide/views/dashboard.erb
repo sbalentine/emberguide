@@ -867,6 +867,7 @@
           submissions = grades_by_course.fetch(course_id, [])
 
           grading_settings = course_grading_settings(grade_overrides, course_id)
+          category_css_classes = grade_category_css_classes(grading_settings["categories"])
           grade_summary = course_grade_summary(submissions, grading_settings)
           earned = grade_summary["earned"]
           possible = grade_summary["possible"]
@@ -967,7 +968,8 @@
                 url = assignment["html_url"]
                 official_override = submission["_official_override"]
                 review_entry = grade_reviews[grade_review_key(assignment["course_id"], assignment_id(submission))]
-                grade_category = grading_settings["categories"][grading_settings["assignments"][grading_assignment_key(submission)]]
+                grade_category_id = grading_settings["assignments"][grading_assignment_key(submission)]
+                grade_category = grading_settings["categories"][grade_category_id]
 
                 grade_class =
                   if pct && pct < 70
@@ -989,16 +991,16 @@
                       url,
                       assignment_saved_content(data, assignment["course_id"], assignment["id"], submission)
                     ) %>
-                    <% if grading_settings["mode"] == "weighted" && grade_category %>
-                      · <%= h grade_category["name"] %> (<%= h format_number(grade_category["weight"]) %>% course weight)
-                    <% end %>
                   </div>
 
-                  <div class="assignment-course">
-                    <%= h grade_date(
-                      submission["graded_at"] ||
-                      assignment["due_at"]
-                    ) %>
+                  <div class="assignment-course grade-assignment-meta">
+                    <span><%= h grade_date(
+                        submission["graded_at"] ||
+                        assignment["due_at"]
+                      ) %></span>
+                    <% if grading_settings["mode"] == "weighted" && grade_category %>
+                      <span class="grade-category-label <%= category_css_classes.fetch(grade_category_id) %>"><%= h grade_category["name"] %> (<%= h format_number(grade_category["weight"]) %>%)</span>
+                    <% end %>
                     <% if official_override %>
                       <span class="official-grade-badge">Edited</span>
                     <% end %>

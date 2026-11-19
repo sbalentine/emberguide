@@ -56,6 +56,15 @@ def grade_badge(value, label: nil)
   %(<span class="grade-result #{grade_css_class(value)}#{' perfect-score' if perfect}"#{' title="Perfect score!"' if perfect}>#{h text}</span>)
 end
 
+def grade_category_css_classes(categories)
+  weights = categories.values.map { |category| category["weight"] }.uniq.sort.reverse
+  colors = %w[grade-a grade-b grade-c grade-d grade-f]
+  categories.to_h do |id, category|
+    rank = weights.index(category["weight"])
+    [id, colors[[rank, colors.length - 1].min]]
+  end
+end
+
 def grade_trend_points(submissions, grading: nil)
   chronological = Array(submissions).filter_map do |submission|
     if grading && grading["mode"] == "weighted"

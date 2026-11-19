@@ -242,6 +242,24 @@ queries still require care, and anonymity is not guaranteed. Avoid secrets and
 unnecessary sensitive information. Each note allows 4,000 characters, with a
 24,000-character combined limit. Context can be edited while Spark is offline.
 
+#### Automatic grade categories
+
+Enable **Settings → Spark → Automatic grade categories** to let Spark categorize
+new and previously uncategorized scored assignments on the next Canvas refresh.
+This is off by default and applies only to classes using weighted grading.
+Spark uses that class's existing categories and categorized assignment titles as
+examples, and makes its best guess for every eligible assignment, even when
+uncertain. Review and correct its choices in the class grade editor.
+
+Scores, category weights, and existing category choices are never changed.
+Hidden classes, hidden assignments, and work excluded from the final grade are
+skipped. Only assignment titles, category names, and their identifiers are sent
+to the configured Spark server; no scores, student profile, chat history, or web
+search are needed. Failed or invalid responses leave the affected assignments
+uncategorized with their existing provisional-grade marker, log an error, and
+retry on the next refresh without preventing Canvas updates. Turning the setting
+off preserves categories already assigned. The setting is included in backups.
+
 #### Saved conversations
 
 Spark saves conversations on the EmberGuide server, so questions and answers
@@ -417,6 +435,10 @@ Open **Edit this class → Course grading** to choose **Weighted categories**
 instead of the default **Total points**. Add category names and percentage
 weights, then select a **Grade category** for each Canvas or manually entered
 assignment. Save the settings and grades together.
+On the dashboard, categories appear as compact, automatically colored labels
+below assignment titles, such as **Formative Assessments (35%)**.
+Colors follow each class's category weights from highest to lowest: green (A),
+blue (B), yellow (C), orange (D), then red (F). Equal weights share a color.
 
 Each category uses its total earned points divided by its possible points.
 Course averages combine those percentages using the configured weights, rather
@@ -583,7 +605,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.16.1"
+version: "1.17.0"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

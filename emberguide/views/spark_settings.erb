@@ -20,7 +20,12 @@
       <span class="ask-status" data-ask-status>Checking Spark&hellip;</span>
     </header>
 
-    <% if request.query["saved"] == "context" %>
+    <% if request.query["saved"] == "classification" %>
+      <div class="backup-message success" role="status">
+        <strong>Automatic grade category setting saved.</strong>
+        Changes take effect on the next Canvas refresh. Existing category choices are unchanged.
+      </div>
+    <% elsif request.query["saved"] == "context" %>
       <div class="backup-message success" role="status">
         <strong>Spark context saved.</strong>
         Future replies and newly generated daily overviews will use these notes. Earlier answers are unchanged.
@@ -31,7 +36,7 @@
       </div>
     <% elsif spark_error %>
       <div class="backup-message error" role="alert">
-        <strong><%= spark_context_error ? "Spark context not saved." : "Spark model not saved." %></strong>
+        <strong><%= spark_classification_error ? "Automatic grade category setting not saved." : (spark_context_error ? "Spark context not saved." : "Spark model not saved.") %></strong>
         <%= h spark_error %>
       </div>
     <% end %>
@@ -96,6 +101,23 @@
         <% end %>
       </section>
     <% end %>
+
+    <section class="card calendar-settings-card">
+      <h2>Automatic grade categories</h2>
+      <p class="settings-intro">Let Spark categorize new and previously uncategorized scored assignments during Canvas refresh. It uses each weighted class's existing categories and classified assignments as examples, choosing its best guess even when uncertain.</p>
+      <p class="settings-intro">Spark never changes scores, weights, or existing category choices. Hidden and excluded grades are skipped. Only assignment titles, category names, and category examples are sent to your configured Spark server; web search is not used. If Spark is offline or returns an invalid answer, the grade stays uncategorized with its usual amber marker and is retried on the next refresh.</p>
+      <form method="post" action="/settings/spark">
+        <input type="hidden" name="action" value="grade_classification">
+        <label class="spark-grade-toggle">
+          <input type="checkbox" name="auto_classify_grades" value="true"<%= " checked" if parent_context["auto_classify_grades"] %>>
+          Automatically categorize grades with Spark
+        </label>
+        <p class="settings-intro">Off by default. Review or correct Spark's choices in the class grade editor. Turning this off keeps categories already assigned. A configured Spark server is required to enable it.</p>
+        <div class="settings-actions">
+          <button type="submit">Save Automatic Categories</button>
+        </div>
+      </form>
+    </section>
 
     <section class="card calendar-settings-card spark-context-settings">
       <h2>Parent-provided context</h2>

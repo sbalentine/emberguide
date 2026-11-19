@@ -1712,6 +1712,37 @@ a:hover {
   text-transform: uppercase;
 }
 
+.grade-assignment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.grade-assignment-meta .official-grade-badge {
+  margin-left: 0;
+}
+
+.grade-category-label {
+  --category-color: var(--success);
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--category-color) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--category-color) 12%, transparent);
+  color: var(--category-color);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.grade-category-label.grade-b { --category-color: var(--info); }
+.grade-category-label.grade-c { --category-color: var(--warning); }
+.grade-category-label.grade-d { --category-color: var(--orange); }
+.grade-category-label.grade-f { --category-color: var(--danger); }
+
 .grade-percent {
   display: flex;
   align-items: center;
@@ -4148,6 +4179,8 @@ button.calendar-month-day[aria-expanded="true"] {
 .spark-context-settings textarea { box-sizing: border-box; width: 100%; min-height: 100px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--text); font: inherit; resize: vertical; }
 .spark-context-settings textarea:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
 .spark-settings-page .calendar-settings-card > form { margin-top: 18px; }
+.spark-settings-page .spark-grade-toggle { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+.spark-settings-page .spark-grade-toggle input { width: 20px; min-height: 20px; height: 20px; padding: 0; flex-shrink: 0; accent-color: var(--purple); }
 .spark-context-settings form > h3 { margin: 24px 0 12px; font-size: 18px; }
 .spark-course-context { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
 .spark-course-context summary { cursor: pointer; font-weight: 700; overflow-wrap: anywhere; }
