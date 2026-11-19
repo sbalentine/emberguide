@@ -430,11 +430,15 @@ average. Zero-point extra credit contributes earned points within its assigned
 category once that category has point-bearing work. Hidden assignments stay
 excluded. Assignment percentages and low-grade review rules do not change.
 
-If a graded assignment has no category, EmberGuide explicitly shows **Category
-needed** and withholds the course average and trend instead of silently
-ignoring the assignment or falling back to total points. New Canvas grades may
-need categorization after a refresh. Saved category choices survive Canvas
-score updates and remain available when switching back to total points.
+If a graded assignment has no category, the weighted average and trend use
+categorized work only. A small amber **!** beside the provisional grade explains
+how many assignments are excluded and links to the class grade editor.
+Categorizing the work updates the average and removes the marker. If there is
+no categorized, point-bearing work in a positive-weight category, no average can
+be calculated yet. Daily digests and Spark also identify provisional grades.
+New Canvas grades may need categorization after a refresh. Saved category
+choices survive Canvas score updates and remain available when switching back
+to total points.
 
 The dashboard, cumulative trends, daily digest snapshots, and Spark grade
 context use the same calculation. Grading settings and assignment categories
@@ -579,7 +583,7 @@ Example:
 ```yaml
 name: "EmberGuide"
 description: "A clear, family-friendly guide to Canvas coursework"
-version: "1.16.0"
+version: "1.16.1"
 url: "https://github.com/sbalentine/emberguide"
 slug: "emberguide"
 init: false

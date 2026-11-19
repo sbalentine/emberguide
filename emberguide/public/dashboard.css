@@ -2817,6 +2817,45 @@ button.calendar-month-day[aria-expanded="true"] {
   border-top: 0;
 }
 
+.course-grading-settings {
+  display: grid;
+  gap: 24px;
+  padding: clamp(22px, 3vw, 36px);
+}
+
+.course-grading-settings label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.course-grading-settings label > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.course-grading-settings > .settings-intro {
+  max-width: 78ch;
+  margin: 0;
+  line-height: 1.7;
+}
+
+.course-grading-settings > .add-grade-row {
+  justify-self: start;
+  margin-top: 0;
+}
+
+.course-grading-settings > .settings-help {
+  padding: 20px 0 0;
+  line-height: 1.7;
+}
+
+#grading-categories {
+  display: grid;
+  gap: 20px;
+}
+
 .course-grading-settings input,
 .course-grading-settings select,
 .grade-category-field select {
@@ -2830,11 +2869,16 @@ button.calendar-month-day[aria-expanded="true"] {
   font: inherit;
 }
 
+.course-grading-settings input,
+.course-grading-settings select {
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
 .grading-category-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 110px;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 20px;
 }
 
 .grade-category-field {
@@ -2848,6 +2892,29 @@ button.calendar-month-day[aria-expanded="true"] {
 .grading-warning {
   padding: 12px 20px;
   color: var(--warning);
+}
+
+.grade-update-marker {
+  display: inline-flex;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.grade-update-marker:focus-visible {
+  outline: 2px solid var(--warning);
+  outline-offset: 3px;
 }
 
 .assignment-grade-row.is-edited {

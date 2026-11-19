@@ -54,11 +54,26 @@ class AppRoutesTest < Minitest::Test
       "assignment" => { "id" => 11, "course_id" => 1, "name" => "New Quiz", "points_possible" => 10 }
     }
     body = request("/").body
-    assert_includes body, "Category needed for 1 graded assignment"
+    assert_includes body, "Provisional grade: 1 uncategorized graded assignment excluded"
     card = body[/id="grade-course-1".*?<\/section>/m]
-    refute_includes card, 'class="grade-value"'
-    refute_includes body, 'data-grade-trend-index="0"'
-    assert_includes digest_grade_snapshot($dashboard_data, {}, saved).first["error"], "Category needed"
+    assert_includes card, 'class="grade-value">90.7%'
+    assert_match(/class="grade-update-marker"\s+href="\/settings\/grades\?course_id=1"/, card)
+    refute_includes card, 'class="grading-warning"'
+    assert_includes body, 'data-grade-trend-index="0"'
+    assert_equal 3, body.scan('class="grade-update-marker"').length
+    digest = digest_grade_snapshot($dashboard_data, {}, saved).first
+    assert_equal 91, digest["percentage"]
+    assert_includes digest["category_notice"], "Provisional grade"
+
+    fields["canvas_11_category"] = "quiz"
+    %w[name score points course_id date category].each do |field|
+      fields["custom_#{custom_id}_#{field}"] = fields["new_0_#{field}"]
+    end
+    fields.reject! { |key, _value| key.start_with?("new_") }
+    assert_equal "303", request("/settings/grades", Net::HTTP::Post, fields).code
+    body = request("/").body
+    refute_includes body, 'class="grade-update-marker"'
+    assert_includes body, "93%"
   end
 
   def test_modules_browsing_is_read_only_and_escapes_canvas_text

@@ -754,6 +754,36 @@ class EmailBackupsTest < Minitest::Test
     assert_includes text, "GRADES POSTED IN THE LAST 7 DAYS"
   end
 
+  def test_digest_keeps_provisional_weighted_grades_with_category_notices
+    now = Time.local(2026, 10, 14, 9)
+    $dashboard_data["grades"] = [
+      graded_submission(10, 1, "Quiz", 8, 10, "2026-10-12T12:00:00-07:00"),
+      graded_submission(11, 1, "New Work", 0, 100, "2026-10-13T12:00:00-07:00")
+    ]
+    save_grade_overrides(
+      "canvas" => {}, "custom" => {},
+      "grading" => {
+        "1" => {
+          "mode" => "weighted",
+          "categories" => { "quiz" => { "name" => "Quizzes", "weight" => 100 } },
+          "assignments" => { "canvas-10" => "quiz" }
+        }
+      }
+    )
+    digest = digest_data(now: now)
+    grade = digest["grade_snapshot"].first
+    assert_equal 80, grade["percentage"]
+    refute grade["error"]
+    assert_includes grade["category_notice"], "1 uncategorized graded assignment excluded"
+    text = digest_text_body(digest, now)
+    assert_includes text, "Math: 80% (B-)"
+    assert_includes text, "Provisional grade"
+    html = digest_html_body(digest, now)
+    assert_includes html, "80%"
+    assert_includes html, 'title="Provisional grade: 1 uncategorized graded assignment excluded'
+    refute_includes html, "Course average withheld"
+  end
+
   def test_digest_excludes_hidden_assignments_and_their_points
     now = Time.local(2026, 10, 14, 9)
     hidden_assignment = {

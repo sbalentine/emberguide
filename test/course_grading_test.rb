@@ -47,12 +47,32 @@ class CourseGradingTest < Minitest::Test
     assert_includes summary["error"], "No graded work"
   end
 
-  def test_unassigned_grades_withhold_average_instead_of_silently_disappearing
-    summary = course_grade_summary([grade(1, 8, 10), grade(99, 10, 10)], settings)
+  def test_unassigned_grades_leave_a_provisional_average_until_categorized
+    grades = [grade(1, 8, 10), grade(99, 0, 10, day: 2)]
+    summary = course_grade_summary(grades, settings)
+    assert_equal 80, summary["percentage"]
+    refute summary["error"]
+    assert_includes summary["category_notice"], "1 uncategorized graded assignment excluded"
+    points = grade_trend_points(grades, grading: settings)
+    assert_equal [80], points.map { |point| point["y"] }
+    assert_equal ["Work 1"], points.map { |point| point["assignment"] }
+
+    data = { "courses" => [{ "id" => 1 }], "grades" => grades }
+    context = ai_grade_lines(data, { "1" => "History" }, { "grading" => { "1" => settings } }).first.first
+    assert_includes context, "80% (B-)"
+    assert_includes context, "Provisional grade"
+
+    categorized = settings
+    categorized["assignments"]["canvas-99"] = "quizzes"
+    updated = course_grade_summary(grades, categorized)
+    assert_equal 40, updated["percentage"]
+    refute updated["category_notice"]
+
+    summary = course_grade_summary([grade(99, 10, 10)], settings)
     assert_nil summary["percentage"]
-    assert_includes summary["error"], "Category needed for 1 graded assignment"
+    assert_includes summary["error"], "No graded work"
     data = { "courses" => [{ "id" => 1 }], "grades" => [grade(99, 10, 10)] }
-    assert_includes ai_grade_lines(data, { "1" => "History" }, { "grading" => { "1" => settings } }).first.first, "Category needed"
+    assert_includes ai_grade_lines(data, { "1" => "History" }, { "grading" => { "1" => settings } }).first.first, "No graded work"
   end
 
   def test_extra_credit_is_added_within_its_category_including_early_bonus

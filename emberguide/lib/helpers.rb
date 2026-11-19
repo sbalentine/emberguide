@@ -58,6 +58,11 @@ end
 
 def grade_trend_points(submissions, grading: nil)
   chronological = Array(submissions).filter_map do |submission|
+    if grading && grading["mode"] == "weighted"
+      category = grading["assignments"][grading_assignment_key(submission)]
+      next unless grading["categories"].key?(category)
+    end
+
     assignment = submission["assignment"] || {}
     recorded_at = parse_canvas_time(
       submission["graded_at"] || assignment["due_at"]

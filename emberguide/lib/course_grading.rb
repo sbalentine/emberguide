@@ -57,13 +57,12 @@ def course_grade_summary(submissions, settings)
   end
   missing = grouped.sum { |id, grades| categories.key?(id) ? 0 : grades.length }
   if missing > 0
-    return result.merge(
-      "percentage" => nil,
-      "error" => "Category needed for #{missing} graded #{missing == 1 ? 'assignment' : 'assignments'}. Course average withheld."
-    )
+    result["category_notice"] = "Provisional grade: #{missing} uncategorized graded #{missing == 1 ? 'assignment' : 'assignments'} excluded. Assign categories to update."
   end
 
   active = grouped.filter_map do |id, grades|
+    next unless categories.key?(id)
+
     weight = categories.fetch(id)["weight"]
     points = grades.sum { |submission| submission.dig("assignment", "points_possible").to_f }
     next unless weight > 0 && points > 0

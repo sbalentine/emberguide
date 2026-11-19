@@ -479,12 +479,12 @@ def ai_grade_lines(data, course_names, overrides)
   summary = by_course.filter_map do |course_id, submissions|
     result = course_grade_summary(submissions, course_grading_settings(overrides, course_id))
     name = course_names[course_id] || course_id
-    next "- #{name}: #{result["error"]}" if result["error"]
+    next "- #{name}: #{result["error"]} #{result["category_notice"]}".strip if result["error"]
 
     value = result["percentage"]
     next unless value
 
-    "- #{name}: #{value.round}% (#{letter_grade(value)}), #{submissions.length} graded"
+    "- #{name}: #{value.round}% (#{letter_grade(value)}), #{submissions.length} graded#{result["category_notice"] ? ". #{result["category_notice"]}" : ""}"
   end.sort
 
   recent = grades.sort_by { |submission| submission["graded_at"].to_s }.last(AI_RECENT_GRADES).reverse

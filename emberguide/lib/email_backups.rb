@@ -602,7 +602,10 @@ def digest_grade_snapshot(data, mappings, overrides)
         "name" => digest_course_name(data, mappings, course_id),
         "percentage" => calculated&.round,
         "letter" => letter_grade(calculated)
-      }.tap { |grade| grade["error"] = summary["error"] if summary["error"] }
+      }.tap do |grade|
+        grade["error"] = summary["error"] if summary["error"]
+        grade["category_notice"] = summary["category_notice"] if summary["category_notice"]
+      end
     end
     .sort_by { |grade| [grade["percentage"].nil? ? 1 : 0, -(grade["percentage"] || 0), grade["name"]] }
 end
@@ -788,7 +791,7 @@ def digest_text_body(digest, now)
       lines << if grade["error"]
                  "#{grade["name"]}: #{grade["error"]}"
                else
-                 "#{grade["name"]}: #{grade["percentage"]}% (#{grade["letter"]})"
+                 "#{grade["name"]}: #{grade["percentage"]}% (#{grade["letter"]})#{grade["category_notice"] ? " [#{grade["category_notice"]}]" : ""}"
                end
     end
   end
@@ -989,13 +992,17 @@ def digest_html_body(digest, now, logo_src: "/emberguide-icon.png")
         end
         colors = digest_grade_colors(grade["letter"])
         progress = [[grade["percentage"], 0].max, 100].min
+        marker = if grade["category_notice"]
+                   notice = CGI.escapeHTML(grade["category_notice"])
+                   %(<span role="img" title="#{notice}" aria-label="#{notice}" style="display:inline-block;margin-left:5px;padding:2px 6px;border:1px solid #ffc96b;border-radius:999px;color:#ffc96b;font-size:12px;vertical-align:middle;">!</span>)
+                 end
         <<~HTML
           <td class="grade-card-cell" style="width:33.333%;padding:5px;vertical-align:top;">
             <div style="padding:13px;border:1px solid #{colors[:border]};border-radius:10px;background:#{colors[:background]};">
               <div style="min-height:32px;font-size:12px;font-weight:700;line-height:1.35;color:#d7d4e5;">#{CGI.escapeHTML(grade["name"])}</div>
               <table role="presentation" style="width:100%;margin-top:8px;border-collapse:collapse;">
                 <tr>
-                  <td style="font-size:22px;font-weight:800;line-height:1;color:#f4f2ff;">#{grade["percentage"]}%</td>
+                  <td style="font-size:22px;font-weight:800;line-height:1;color:#f4f2ff;">#{grade["percentage"]}%#{marker}</td>
                   <td style="text-align:right;">
                     <span style="display:inline-block;min-width:20px;padding:4px;border-radius:6px;background:#{colors[:border]};color:#{colors[:foreground]};font-size:12px;font-weight:800;text-align:center;">#{grade["letter"]}</span>
                   </td>

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.1
+
+- Give course grading settings more breathing room with clearer label spacing, roomier controls, and more readable instructions.
+- Keep weighted course grades and trends visible using categorized work when assignments need a category.
+- Mark provisional grades with a compact amber indicator linking to the category editor, instead of replacing the grade with a warning.
+- Identify provisional grades consistently in daily digests and Spark context; uncategorized work stays excluded until assigned.
+
 ## 1.16.0
 
 - Add opt-in per-class category-weighted grading with category selectors for Canvas and manually entered assignments.

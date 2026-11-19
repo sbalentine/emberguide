@@ -110,7 +110,8 @@
           "name" => course_display_name,
           "percentage" => calculated&.round,
           "letter" => letter_grade(calculated),
-          "error" => summary["error"]
+          "error" => summary["error"],
+          "category_notice" => summary["category_notice"]
         }
       end.sort_by { |grade| grade["name"] }
 
@@ -126,6 +127,7 @@
         {
           "course_id" => course_id,
           "label" => display_course_name.call(course_id),
+          "category_notice" => course_grade_summaries.fetch(course_id)["category_notice"],
           "points" => points,
           "current_percentage" => current_percentage,
           "letter" => letter_grade(current_percentage),
@@ -272,7 +274,7 @@
           <% grade_snapshot.each do |grade| %>
             <a
               class="grade-snapshot-item <%= "grade-#{grade["letter"][0].downcase}" if grade["letter"] %>"
-              href="#grade-course-<%= h grade["course_id"] %>"
+              href="<%= grade["category_notice"] ? "/settings/grades?course_id=#{h CGI.escape(grade["course_id"])}" : "#grade-course-#{h grade["course_id"]}" %>"
               style="--grade-progress: <%= [[grade["percentage"] || 0, 0].max, 100].min %>%"
             >
               <span class="grade-snapshot-details">
@@ -285,6 +287,9 @@
                   <% else %>
                     <strong><%= grade["percentage"] %>%</strong>
                     <span class="grade-snapshot-letter"><%= grade["letter"] %></span>
+                  <% end %>
+                  <% if grade["category_notice"] %>
+                    <span class="grade-update-marker" role="img" title="<%= h grade["category_notice"] %>" aria-label="<%= h grade["category_notice"] %>">!</span>
                   <% end %>
                 </span>
               </span>
@@ -827,6 +832,9 @@
                   <div class="grade-trend-current">
                     <strong><%= h course["current_percentage"].round %>%</strong>
                     <span><%= h course["letter"] %></span>
+                    <% if course["category_notice"] %>
+                      <a class="grade-update-marker" href="/settings/grades?course_id=<%= h CGI.escape(course["course_id"]) %>" title="<%= h course["category_notice"] %>" aria-label="<%= h course["category_notice"] %>">!</a>
+                    <% end %>
                   </div>
                 </div>
 
@@ -928,6 +936,9 @@
                 —
               <% else %>
                 <span class="grade-letter"><%= h letter_grade(displayed_percentage) %></span>
+              <% end %>
+              <% if grade_summary["category_notice"] %>
+                <a class="grade-update-marker" href="/settings/grades?course_id=<%= h CGI.escape(course_id) %>" title="<%= h grade_summary["category_notice"] %>" aria-label="<%= h grade_summary["category_notice"] %>">!</a>
               <% end %>
             </div>
 
